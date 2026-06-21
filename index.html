@@ -720,7 +720,7 @@ document.getElementById('csv-inp').addEventListener('change',function(){
       evsData=parseEVS(e.target.result);
       buildConflicts();
       renderTable(evsData);
-      setStatus(true,'EVS geladen \u2713 \u2014 Korrekturen aus Trainer-App nicht verf\u00fcgbar (CORS)');
+      setStatus(true,'EVS geladen \u2713');
     }catch(err){
       console.error(err);
       setStatus(false,'Fehler: '+err.message);
