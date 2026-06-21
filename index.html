@@ -225,8 +225,80 @@ var shData={},evsData=null,evsSlots=[],zStart=null,zEnd=null;
 var urlaubKonto={};
 var urlaubVerbraucht={};
 var URLAUB_SOLL={Britta:8.0,Ina:6.0,Katy:7.3,Laura:6.0,Natalia:16.0,Olga:35.0,Paula:7.1};
+
+// Gesetzliche Feiertage Schleswig-Holstein. Bewegliche werden aus Ostern berechnet.
+function osterSonntag(y){
+  var a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;
+  return new Date(y,mo-1,da);
+}
+function feiertageSH(y){
+  function add(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}
+  function key(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  var os=osterSonntag(y);
+  var list={};
+  list[key(new Date(y,0,1))]='Neujahr';
+  list[key(add(os,-2))]='Karfreitag';
+  list[key(add(os,1))]='Ostermontag';
+  list[key(new Date(y,4,1))]='Tag der Arbeit';
+  list[key(add(os,39))]='Christi Himmelfahrt';
+  list[key(add(os,50))]='Pfingstmontag';
+  list[key(new Date(y,9,3))]='Tag der Deutschen Einheit';
+  list[key(new Date(y,9,31))]='Reformationstag';
+  list[key(new Date(y,11,25))]='1. Weihnachtstag';
+  list[key(new Date(y,11,26))]='2. Weihnachtstag';
+  return list;
+}
+// Feiertage im Zyklus ermitteln
+function feiertageImZyklus(){
+  if(!zStart||!zEnd)return [];
+  var out=[];
+  [zStart.getFullYear(),zEnd.getFullYear()].forEach(function(y,idx,arr){
+    if(idx>0&&arr[0]===arr[1])return;
+    var fl=feiertageSH(y);
+    Object.keys(fl).forEach(function(k){
+      var p=k.split('-');var d=new Date(+p[0],+p[1]-1,+p[2]);
+      if(d>=zStart&&d<=zEnd)out.push({datum:d,ds:k,name:fl[k],wd:d.getDay()});
+    });
+  });
+  return out;
+}
+// Pro Trainerin: Feiertags-Anspruch berechnen.
+// Regel: Fällt ein Feiertag in den Zyklus und hat die Trainerin an >=2 anderen Tagen
+// mit GLEICHEM Wochentag laut EVS Training gegeben, wird der Feiertag bezahlt -
+// mit dem Durchschnitt der erbrachten Stunden dieser vergleichbaren Tage.
+function getFeiertage(key){
+  var fts=feiertageImZyklus();
+  if(!fts.length)return {stunden:0,details:[],tage:{}};
+  // EVS-Stunden je Tag dieser Trainerin sammeln (gerundet wie sonst)
+  function mins(s,e){var sh=s.split(':'),eh=e.split(':');return(+eh[0]*60+ +eh[1])-(+sh[0]*60+ +sh[1]);}
+  function round(m){return m===55?60:m===85?90:m;}
+  var perTag={}; // ds -> {hrs, wd, count}
+  evsSlots.forEach(function(ev){
+    if(EVM[ev.trainer]!==key)return;
+    if(ev.datum<zStart||ev.datum>zEnd)return;
+    var dskey=ds(ev.datum);
+    if(!perTag[dskey])perTag[dskey]={hrs:0,wd:ev.datum.getDay(),count:0};
+    perTag[dskey].hrs+=round(mins(ev.start,ev.end))/60;
+    perTag[dskey].count++;
+  });
+  var totalH=0,details=[],tage={};
+  fts.forEach(function(ft){
+    // Vergleichbare Tage = gleicher Wochentag, NICHT der Feiertag selbst, mit Training
+    var vergleich=Object.keys(perTag).filter(function(dskey){
+      return perTag[dskey].wd===ft.wd && dskey!==ft.ds && perTag[dskey].count>0;
+    });
+    if(vergleich.length>=2){
+      var avg=vergleich.reduce(function(s,d){return s+perTag[d].hrs;},0)/vergleich.length;
+      avg=+avg.toFixed(2);
+      totalH+=avg;
+      tage[ft.ds]=true;
+      details.push({name:ft.name,ds:ft.ds,stunden:avg,vergleichstage:vergleich.length});
+    }
+  });
+  return {stunden:+totalH.toFixed(2),details:details,tage:tage};
+}
 var expanded={},clrDec={},clrNotes={},conflicts=[],rows=[],redundantGehalten={};
-var manAmts={},guthaben={},manEntries={};
+var manAmts={},guthaben={},manEntries={},baseConfirmed={};
 var festschreibungen={};
 var abrMonth=null;
 try{var _fs=localStorage.getItem('pc_festschreibungen');if(_fs)festschreibungen=JSON.parse(_fs);}catch(e){}
@@ -373,6 +445,9 @@ function buildConflicts(){
   // gegen genau einen EVS-Slot geprüft wird (nicht die Summe gegen einen Slot).
   var usedSlots={}; // slotKey → true
   function slotId(ev){return ds(ev.datum)+'|'+ev.start+'|'+ev.name+'|'+ev.trainer;}
+  // Feiertags-Ausnahme vorberechnen: an qualifizierten Feiertagen kein Clearing
+  var feierTageProTrainer={};
+  Object.keys(T).forEach(function(k){feierTageProTrainer[k]=getFeiertage(k).tage;});
   // Sheet-Einträge chronologisch und mit Zeit zuerst, damit getimete Stunden ihren Slot zuerst greifen
   var allSh=[];
   Object.keys(shData).forEach(function(key){
@@ -407,6 +482,11 @@ function buildConflicts(){
       var cid=sh.ds+'_'+(ev.start||'na')+'_'+key+'_'+(evKey||ev.trainer||'unbekannt')+'_'+(sh._idx||conflicts.length);
       conflicts.push({id:cid,kind:'mismatch',shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:evKey,evFull:evKey&&T[evKey]?T[evKey].full:(ev.trainer||'Unbekannt'),evKurs:ev.name,evStart:ev.start,evEnd:ev.end,datum:sh.ds,timeMatch:timeMatch,shRef:sh});
     } else {
+      // Feiertags-Ausnahme: An einem qualifizierten Feiertag ist eine EVS-lose Erfassung KEIN Clearingfall
+      if(feierTageProTrainer[key]&&feierTageProTrainer[key][sh.ds]){
+        sh._feiertag=true;
+        return;
+      }
       // Kein freier passender EVS-Slot → Erfassung ohne EVS-Beleg → Clearing
       var cid2=sh.ds+'_noevs_'+key+'_'+(sh.von||'na')+'_'+sh.kurs+'_'+(sh._idx||conflicts.length);
       conflicts.push({id:cid2,kind:'noevs',shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:null,evFull:null,evKurs:null,evStart:null,evEnd:null,datum:sh.ds,timeMatch:null,shRef:sh});
@@ -444,7 +524,11 @@ function getCorr(key,start,end){
 }
 
 function getManTotal(key){
-  return (manEntries[key]||[]).reduce(function(s,e){return s+(e.typ==='plus'?e.betrag:-e.betrag);},0);
+  var rate=T[key]?T[key].rate:0;
+  return (manEntries[key]||[]).reduce(function(s,e){
+    var val=e.stunden?+(e.stunden*rate).toFixed(2):e.betrag;
+    return s+(e.typ==='plus'?val:-val);
+  },0);
 }
 
 function parseEVS(text){
@@ -568,12 +652,14 @@ function exportFestCSV(){
 }
 
 function decide(id,who){
+  var sy=window.scrollY;
   clrDec[id]=who;
   var u=conflicts.filter(function(c){return !clrDec[c.id];}).length;
   var badge=document.getElementById('clr-badge');
   badge.textContent=u;badge.style.display=u>0?'inline':'none';
   renderClr();
   if(evsData)renderTable(evsData);
+  window.scrollTo(0,sy);
 }
 
 function renderClr(){
@@ -662,8 +748,7 @@ function renderClr(){
       +actions
       +'</div>';
   }
-  h+=open.map(rc).join('');
-  if(done.length){h+='<div class="sec-title" style="margin-top:1.5rem;margin-bottom:10px">Geklärte Fälle</div>';h+=done.map(rc).join('');}
+  h+=conflicts.map(rc).join('');
   el.innerHTML=h;
 }
 
@@ -672,16 +757,33 @@ function toggleManForm(key){
   if(f)f.style.display=f.style.display==='block'?'none':'block';
 }
 
+function toggleBase(key){
+  baseConfirmed[key]=!baseConfirmed[key];
+  if(evsData)renderTable(evsData);
+}
+
 function addManEntry(key){
+  var stundenEl=document.getElementById('man-h-'+key);
   var betragEl=document.getElementById('man-b-'+key);
   var notizEl=document.getElementById('man-n-'+key);
   var typEl=document.getElementById('man-t-'+key);
-  if(!betragEl)return;
-  var b=parseFloat(betragEl.value.replace(',','.'));
-  if(isNaN(b)||b<=0){alert('Bitte gültigen Betrag eingeben.');return;}
+  if(!betragEl&&!stundenEl)return;
+  var rate=T[key]?T[key].rate:0;
+  var stunden=stundenEl&&stundenEl.value?parseFloat(stundenEl.value.replace(',','.')):0;
+  var b=betragEl&&betragEl.value?parseFloat(betragEl.value.replace(',','.')):0;
+  if((isNaN(stunden)||stunden<=0)&&(isNaN(b)||b<=0)){alert('Bitte Stunden ODER Betrag eingeben.');return;}
+  var notiz=notizEl?notizEl.value:'';
+  if(!notiz.trim()){alert('Bitte eine Begründung angeben.');return;}
   if(!manEntries[key])manEntries[key]=[];
-  manEntries[key].push({betrag:+b.toFixed(2),notiz:notizEl.value||'',typ:typEl.value||'plus'});
-  betragEl.value='';notizEl.value='';
+  if(stunden>0){
+    manEntries[key].push({stunden:+stunden.toFixed(2),betrag:+(stunden*rate).toFixed(2),notiz:notiz,typ:typEl?typEl.value:'plus'});
+  }
+  if(b>0){
+    manEntries[key].push({betrag:+b.toFixed(2),notiz:notiz,typ:typEl?typEl.value:'plus'});
+  }
+  if(stundenEl)stundenEl.value='';
+  if(betragEl)betragEl.value='';
+  if(notizEl)notizEl.value='';
   renderManList(key);
   updateTotals();
   if(evsData)renderTable(evsData);
@@ -700,8 +802,9 @@ function renderManList(key){
   var entries=manEntries[key]||[];
   if(!entries.length){el.innerHTML='<span style="color:#a07870;font-size:11px">Keine Eintr\u00e4ge</span>';return;}
   el.innerHTML=entries.map(function(e,i){
+    var lbl=e.stunden?e.stunden+' h \u00d7 '+eur(T[key].rate)+' = '+eur(e.betrag):eur(e.betrag);
     return '<div class="man-list-line">'
-      +'<span style="color:'+(e.typ==='plus'?'#3b6d11':'#a32d2d')+';font-weight:500">'+(e.typ==='plus'?'+':'\u2212')+eur(e.betrag)+'</span>'
+      +'<span style="color:'+(e.typ==='plus'?'#3b6d11':'#a32d2d')+';font-weight:500">'+(e.typ==='plus'?'+':'\u2212')+lbl+'</span>'
       +'<span style="color:#a07870;margin:0 8px;flex:1">'+e.notiz+'</span>'
       +'<button onclick="removeManEntry(\''+key+'\','+i+')" style="background:none;border:none;cursor:pointer;color:#a07870;font-size:11px;padding:0">\u2715</button>'
       +'</div>';
@@ -786,23 +889,28 @@ function renderTable(data){
     var t=T[key];if(t.ph)return null;
     var eHrs=+(data[key]?data[key].hrs||0:0).toFixed(2);
     var corr=getCorr(key,zStart,zEnd);
-    var totH=+(eHrs+corr.netto).toFixed(2);
+    var feier=getFeiertage(key);
+    var totH=+(eHrs+corr.netto+feier.stunden).toFixed(2);
     var soll=t.wh*4;
     var diff=+(totH-soll).toFixed(2);
     var ot=Math.max(0,diff);
-    var amount=+(t.base+ot*t.rate).toFixed(2);
+    // Neues Modell: Brutto = erbrachte Stunden (EVS + anerkannte Korrekturen) x Stundenlohn.
+    // Grundgehalt NICHT automatisch; nur wenn per Klick bestätigt (baseConfirmed).
+    var stundenBrutto=+(totH*t.rate).toFixed(2);
+    var useBase=!!baseConfirmed[key];
+    var amount=useBase?+Math.max(stundenBrutto,t.base).toFixed(2):stundenBrutto;
     var myC=conflicts.filter(function(c){return c.shKey===key||c.evKey===key;});
     var opC=myC.filter(function(c){return !clrDec[c.id];});
     tHrs+=totH;tBase+=t.base;
     var man=manAmts[key];var mt=getManTotal(key);
     tAmt+=(man!==null&&man!==undefined?man:amount)+mt;
-    return{key:key,t:t,eHrs:eHrs,corr:corr,totH:totH,soll:soll,diff:diff,ot:ot,amount:amount,count:data[key]?data[key].count||0:0,rounded:data[key]?data[key].rounded||0:0,myC:myC,opC:opC};
+    return{key:key,t:t,eHrs:eHrs,corr:corr,feier:feier,totH:totH,soll:soll,diff:diff,ot:ot,amount:amount,count:data[key]?data[key].count||0:0,rounded:data[key]?data[key].rounded||0:0,myC:myC,opC:opC};
   }).filter(Boolean);
 
   document.getElementById('metrics').innerHTML=
     '<div class="metric"><div class="metric-lbl">Trainerinnen</div><div class="metric-val">'+rows.length+'</div><div class="metric-sub">aktiv</div></div>'
     +'<div class="metric"><div class="metric-lbl">Gesamtstunden</div><div class="metric-val">'+fmt(tHrs)+'</div><div class="metric-sub">inkl. Korrekturen</div></div>'
-    +'<div class="metric"><div class="metric-lbl">Grundgeh\u00e4lter</div><div class="metric-val">'+eur(tBase)+'</div><div class="metric-sub">fix gesamt</div></div>'
+    +'<div class="metric"><div class="metric-lbl">Grundgeh\u00e4lter</div><div class="metric-val" style="color:#a07870">'+eur(tBase)+'</div><div class="metric-sub">Orientierung</div></div>'
     +'<div class="metric"><div class="metric-lbl">Auszahlung gesamt</div><div class="metric-val" style="color:#d9a49a" id="metric-amt">'+eur(tAmt)+'</div><div class="metric-sub">nach Anpassung</div></div>';
 
   var tbody=document.getElementById('tbody');tbody.innerHTML='';
@@ -860,30 +968,33 @@ function renderTable(data){
     dt.innerHTML='<td colspan="10"><div class="det-inner">'
       +'<div class="det-grid">'
       +'<div class="det-card"><div class="det-card-lbl">Stundensatz</div><div class="det-card-val">'+eur(t.rate)+'</div></div>'
-      +'<div class="det-card"><div class="det-card-lbl">Grundgehalt (fix)</div><div class="det-card-val">'+eur(t.base)+'</div></div>'
+      +'<div class="det-card"><div class="det-card-lbl">Grundgehalt (Orientierung)</div><div class="det-card-val" style="color:#a07870">'+eur(t.base)+'</div></div>'
       +'<div class="det-card"><div class="det-card-lbl">Guthaben-Konto</div><div class="det-card-val" style="color:#185fa5">'+eur(guthaben[key]||0)+'</div></div>'
       +'</div>'
       +'<div class="calc">'
       +'<div class="sec-title" style="margin-bottom:6px">Berechnung</div>'
       +'<div class="cr"><span class="cl">Eversports ('+row.count+' Kurse'+(row.rounded>0?', '+row.rounded+' gerundet':'')+') </span><span>'+fmt(row.eHrs)+' h</span></div>'
       +'<div class="cr"><span class="cl">+ Korrekturen App</span><span class="'+(cHrs===0?'':'corr-'+(cHrs>0?'p':'n'))+'">'+(cHrs===0?'keine':(cHrs>0?'+':'')+fmt(cHrs)+' h')+'</span></div>'
-      +'<div class="cr"><span class="cl">= Gesamtstunden</span><span style="font-weight:500">'+fmt(row.totH)+' h</span></div>'
-      +'<div class="cr"><span class="cl">Soll ('+fmt(t.wh,1)+' h/Wo \u00d7 4)</span><span>'+fmt(row.soll,0)+' h</span></div>'
-      +'<div class="cr"><span class="cl">Differenz</span><span class="'+dc+'">'+ds2+'</span></div>'
-      +'<div class="cr" style="margin-top:6px"><span class="cl">Grundgehalt</span><span>'+eur(t.base)+'</span></div>'
-      +'<div class="cr"><span class="cl">+ \u00dcberstunden ('+fmt(row.ot)+' h \u00d7 '+eur(t.rate)+')</span><span>'+eur(row.ot*t.rate)+'</span></div>'
-      +'<div class="cr tot"><span class="cl">Berechnet</span><span>'+eur(row.amount)+'</span></div>'
+      +(row.feier&&row.feier.stunden>0?'<div class="cr"><span class="cl" style="color:#3b6d11">+ Feiertage ('+row.feier.details.map(function(f){return f.name;}).join(', ')+')</span><span style="color:#3b6d11">+'+fmt(row.feier.stunden)+' h</span></div>':'')
+      +'<div class="cr"><span class="cl">= Erbrachte Stunden</span><span style="font-weight:500">'+fmt(row.totH)+' h</span></div>'
+      +'<div class="cr" style="margin-top:6px"><span class="cl">Erbrachte Stunden '+fmt(row.totH)+' h \u00d7 '+eur(t.rate)+'</span><span style="font-weight:500">'+eur(row.totH*t.rate)+'</span></div>'
+      +'<div class="cr"><span class="cl" style="color:#a07870">Soll '+fmt(row.soll,0)+' h \u00b7 Grundgehalt-Orientierung '+eur(t.base)+'</span><span style="color:#a07870">'+(row.diff>=0?'+':'')+fmt(row.diff)+' h</span></div>'
+      +'<div class="cr" style="align-items:center"><span class="cl"><label style="cursor:pointer;display:flex;align-items:center;gap:5px"><input type="checkbox" '+(baseConfirmed[key]?'checked':'')+' onchange="toggleBase(\''+key+'\')"> Grundgehalt als Mindestbetrag anwenden</label></span><span>'+(baseConfirmed[key]?eur(t.base):'\u2014')+'</span></div>'
+      +'<div class="cr tot"><span class="cl">Berechneter Bruttolohn</span><span>'+eur(row.amount)+'</span></div>'
       +calcExtra
       +'</div>'
       +(corrLines?'<div class="corr-box"><div class="corr-title">Korrekturen im Zyklus</div>'+corrLines+'</div>':'')
       +'<div class="corr-box" style="margin-top:8px">'
-      +'<div class="corr-title" style="display:flex;justify-content:space-between;align-items:center">Einmalige Sonderzahlungen <button class="man-btn" onclick="toggleManForm(\''+key+'\')">+ Eintrag</button></div>'
+      +'<div class="corr-title" style="display:flex;justify-content:space-between;align-items:center">Zusatz-Erfassung (Feiertage, Sonderzahlungen) <button class="man-btn" onclick="toggleManForm(\''+key+'\')">+ Eintrag</button></div>'
       +'<div id="man-list-'+key+'" class="man-list">'+manListHTML+'</div>'
       +'<div id="man-form-'+key+'" class="man-form">'
       +'<div class="man-form-row">'
-      +'<select id="man-t-'+key+'" class="man-inp" style="width:110px"><option value="plus">+ Zuzahlung</option><option value="minus">\u2212 Abzug</option></select>'
-      +'<input id="man-b-'+key+'" class="man-inp" style="width:90px" type="text" placeholder="Betrag \u20ac">'
-      +'<input id="man-n-'+key+'" class="man-inp" style="flex:1;min-width:140px" type="text" placeholder="Begr\u00fcndung (auf PDF)">'
+      +'<select id="man-t-'+key+'" class="man-inp" style="width:100px"><option value="plus">+ Zuzahlung</option><option value="minus">\u2212 Abzug</option></select>'
+      +'<input id="man-h-'+key+'" class="man-inp" style="width:80px" type="text" placeholder="Stunden">'
+      +'<span style="font-size:11px;color:#a07870">\u00d7 '+eur(t.rate)+'</span>'
+      +'<span style="font-size:11px;color:#a07870">oder</span>'
+      +'<input id="man-b-'+key+'" class="man-inp" style="width:80px" type="text" placeholder="Betrag \u20ac">'
+      +'<input id="man-n-'+key+'" class="man-inp" style="flex:1;min-width:140px" type="text" placeholder="Begr\u00fcndung (Pflicht, auf PDF)">'
       +'<button onclick="addManEntry(\''+key+'\')" class="man-btn" style="border-color:#639922;color:#3b6d11">\u2713</button>'
       +'</div></div></div>'
       +'</div></td>';
@@ -905,9 +1016,10 @@ function togDet(key){
   btn.textContent=expanded[key]?'\u25b4':'\u25be';
 }
 
-function makePDF(row,ps){
+function makePDF(row,ps,existingDoc){
   var {jsPDF}=window.jspdf;
-  var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  var doc=existingDoc||new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  if(existingDoc)doc.addPage();
   var t=row.t,pk=[217,164,154],dk=[40,30,28],gr=[120,110,108];
   var man=manAmts[row.key];
   var aus=man!==null&&man!==undefined?man:row.amount;
@@ -928,15 +1040,15 @@ function makePDF(row,ps){
   }
   r2('Eversports-Stunden',fmt(row.eHrs)+' h');
   r2('+ Korrekturen Trainer-App',(row.corr.netto>=0?'+':'')+fmt(row.corr.netto)+' h');
+  if(row.feier&&row.feier.stunden>0){r2('+ Feiertage ('+row.feier.details.map(function(f){return f.name;}).join(', ')+')','+'+fmt(row.feier.stunden)+' h',false,[59,109,17]);}
   doc.setDrawColor(220,210,208);doc.setLineWidth(0.2);doc.line(14,y-2,196,y-2);
-  r2('= Gesamtstunden',fmt(row.totH)+' h',true);y+=2;
-  r2('Soll-Stunden ('+fmt(t.wh,1)+' h/Wo × 4 Wo)',fmt(row.soll,0)+' h');
-  r2('Differenz',(row.diff>=0?'+':'')+fmt(row.diff)+' h');y+=2;
+  r2('= Erbrachte Stunden',fmt(row.totH)+' h',true);y+=2;
   doc.setDrawColor(...pk);doc.setLineWidth(0.4);doc.line(14,y-2,196,y-2);
-  r2('Grundgehalt (fix)',eur(t.base));
-  r2('+ Überstunden ('+fmt(row.ot)+' h × '+eur(t.rate)+')',eur(row.ot*t.rate));y+=2;
+  r2('Erbrachte Stunden '+fmt(row.totH)+' h × '+eur(t.rate),eur(row.totH*t.rate));
+  r2('Soll '+fmt(row.soll,0)+' h · Grundgehalt-Orientierung '+eur(t.base),(row.diff>=0?'+':'')+fmt(row.diff)+' h',false,gr);
+  if(baseConfirmed[row.key]){r2('Grundgehalt als Mindestbetrag angewendet',eur(t.base));}y+=2;
   doc.setFillColor(251,234,240);doc.rect(12,y-5,184,10,'F');
-  doc.setTextColor(...dk);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.text('Berechnet',14,y+1);
+  doc.setTextColor(...dk);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.text('Berechneter Bruttolohn',14,y+1);
   doc.setTextColor(180,100,90);doc.text(eur(row.amount),196,y+1,{align:'right'});y+=14;
   if(gn>0||ks>0){
     doc.setFillColor(230,241,251);doc.rect(12,y-5,184,gn>0&&ks>0?20:12,'F');
@@ -948,18 +1060,20 @@ function makePDF(row,ps){
   }
   var mEnt=manEntries[row.key]||[];
   if(mEnt.length){
-    doc.setTextColor(...gr);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.text('EINMALIGE SONDERZAHLUNGEN',14,y);y+=5;doc.setFont('helvetica','normal');
-    var mt=0;
+    doc.setTextColor(...gr);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.text('ZUSATZ-ERFASSUNG / SONDERZAHLUNGEN',14,y);y+=5;doc.setFont('helvetica','normal');
+    var mt=0;var rate=t.rate;
     mEnt.forEach(function(e){
-      var sign=e.typ==='plus'?1:-1;mt+=sign*e.betrag;
-      doc.setTextColor(e.typ==='plus'?[59,109,17]:[163,45,45]);
-      doc.text((e.typ==='plus'?'+ ':'- ')+eur(e.betrag)+(e.notiz?' — '+e.notiz:''),14,y);
-      doc.text((e.typ==='plus'?'+':'-')+eur(e.betrag),196,y,{align:'right'});y+=5;
+      var val=e.stunden?+(e.stunden*rate).toFixed(2):e.betrag;
+      var sign=e.typ==='plus'?1:-1;mt+=sign*val;
+      if(e.typ==='plus'){doc.setTextColor(59,109,17);}else{doc.setTextColor(163,45,45);}
+      var lbl=e.stunden?e.stunden+' h × '+eur(rate):'';
+      doc.text((e.typ==='plus'?'+ ':'- ')+eur(val)+(lbl?' ('+lbl+')':'')+(e.notiz?' — '+e.notiz:''),14,y);
+      doc.text((e.typ==='plus'?'+':'-')+eur(val),196,y,{align:'right'});y+=5;
     });
     doc.setDrawColor(...pk);doc.setLineWidth(0.3);doc.line(14,y-1,196,y-1);
     doc.setTextColor(...dk);doc.setFont('helvetica','bold');doc.setFontSize(9);
     var finalAmt=(man!==null&&man!==undefined?man:row.amount)+mt;
-    doc.text('Gesamtbetrag inkl. Sonderzahlungen',14,y+4);doc.setTextColor(180,100,90);doc.text(eur(finalAmt),196,y+4,{align:'right'});y+=10;
+    doc.text('Gesamtbetrag inkl. Zusatz-Erfassung',14,y+4);doc.setTextColor(180,100,90);doc.text(eur(finalAmt),196,y+4,{align:'right'});y+=10;
   }
   if(row.corr.details.length){
     doc.setTextColor(...gr);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.text('KORREKTUREN IM ZYKLUS',14,y);y+=5;doc.setFont('helvetica','normal');
@@ -981,7 +1095,13 @@ function exportOne(key){
 function exportAll(){
   if(!rows.length)return;
   var p=document.getElementById('period').textContent;
-  rows.forEach(function(row){makePDF(row,p).save('Abrechnung_'+row.t.full.replace(/ /g,'_')+'_'+p.replace(/ /g,'').replace(/–/,'-')+'.pdf');});
+  var doc=null,ok=0,fail=[];
+  rows.forEach(function(row){
+    try{doc=makePDF(row,p,doc);ok++;}
+    catch(err){console.error('PDF-Fehler bei '+row.t.full,err);fail.push(row.t.full);}
+  });
+  if(doc){doc.save('Abrechnungen_alle_'+p.replace(/ /g,'').replace(/–/,'-')+'.pdf');}
+  if(fail.length)alert('PDF erstellt für '+ok+' Trainerinnen. Fehler bei: '+fail.join(', '));
 }
 
 function exportSteuerPDF(){
