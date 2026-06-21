@@ -144,7 +144,7 @@ tr:last-child td{border-bottom:none}
 
 <div class="hdr">
   <div style="display:flex;align-items:center;gap:10px">
-    <img src="logo.png" alt="Pilates Company Lübeck" style="height:40px;width:auto">
+    <img src="logo.png" alt="Pilates Company Lübeck" style="height:56px;width:auto">
     <div class="logo-text">Trainer-Abrechnung<br><span class="logo-sub">Pilates Company Lübeck</span></div>
   </div>
   <div class="period" id="period">Zeitraum wählen</div>
@@ -317,7 +317,7 @@ function getCorr(key,start,end){
   var entries=(shData[key]||[]).filter(function(r){return r.datum>=start&&r.datum<=end;});
   var netto=0,details=[];
   entries.forEach(function(r){
-    if(r.art==='Urlaub'){var urlSoll=URLAUB_SOLL[key]||0;var urlVerb=urlaubVerbraucht[key]||0;var urlHrs=Math.abs(r.vz);var urlBezahlt=Math.min(urlHrs,Math.max(0,urlSoll-urlVerb));urlaubVerbraucht[key]=(urlVerb+urlHrs);netto+=urlBezahlt;var notizExtra=urlBezahlt<urlHrs?' ('+fmt(urlHrs-urlBezahlt,1)+' h über Jahressoll)':'';details.push({art:'Urlaub'+notizExtra,vz:urlBezahlt,ds:r.ds,notiz:r.notiz});}
+    if(r.art==='Urlaub'||r.art==='Ausfall/Urlaub'){var urlSoll=URLAUB_SOLL[key]||0;var urlVerb=urlaubVerbraucht[key]||0;var urlHrs=Math.abs(r.vz);var urlBezahlt=Math.min(urlHrs,Math.max(0,urlSoll-urlVerb));urlaubVerbraucht[key]=(urlVerb+urlHrs);netto+=urlBezahlt;var notizExtra=urlBezahlt<urlHrs?' ('+fmt(urlHrs-urlBezahlt,1)+' h über Jahressoll)':'';details.push({art:'Urlaub'+notizExtra,vz:urlBezahlt,ds:r.ds,notiz:r.notiz});}
     else if(r.art==='Kursausfall'){details.push({art:'Kursausfall',vz:0,ds:r.ds,notiz:r.notiz});}
     else if(r.art==='Gehalten'){
       var cf=conflicts.find(function(c){return c.shKey===key&&c.datum===r.ds;});
@@ -395,8 +395,8 @@ function renderClr(){
     return '<div class="cf-card '+cc+'">'
       +'<div class="cf-hdr"><div class="cf-meta"><strong>'+fd(c.datum)+'</strong> \u00b7 '+c.evStart+'\u2013'+c.evEnd+' \u00b7 '+fmt(c.shHrs)+' Std.</div>'+sl+'</div>'
       +'<div class="cf-body">'
-      +'<div class="cf-side"><div class="side-lbl sh">Trainer-App</div><div class="side-name">'+c.shFull+'</div><div class="side-det">'+c.shKurs+'</div>'+(c.shNotiz?'<div class="side-det" style="font-style:italic">'+c.shNotiz+'</div>':'')+'<div style="font-size:13px;font-weight:500;color:#993556;margin-top:6px">'+fmt(c.shHrs)+' h</div></div>'
-      +'<div class="cf-side"><div class="side-lbl ev">Eversports</div><div class="side-name">'+c.evFull+'</div><div class="side-det">'+c.evKurs+'</div><div class="side-det">'+c.evStart+'\u2013'+c.evEnd+'</div><div style="font-size:13px;font-weight:500;color:#185fa5;margin-top:6px">'+fmt(c.shHrs)+' h</div></div>'
+      +'<div class="cf-side"><div class="side-lbl sh">Trainer-App</div><div class="side-name">'+c.shFull+'</div><div class="side-det">'+c.shKurs+'</div>'+(c.shVon?'<div class="side-det" style="font-weight:500;color:#2c1e1c">⏰ '+c.shVon+' Uhr</div>':'<div class="side-det" style="color:#ba7517">⚠ Keine Startzeit eingetragen</div>')+(c.shNotiz?'<div class="side-det" style="font-style:italic">'+c.shNotiz+'</div>':'')+'<div style="font-size:13px;font-weight:500;color:#993556;margin-top:6px">'+fmt(c.shHrs)+' h</div></div>''
+      +'<div class="cf-side"><div class="side-lbl ev">Eversports</div><div class="side-name">'+c.evFull+'</div><div class="side-det">'+c.evKurs+'</div><div class="side-det" style="font-weight:500;color:#2c1e1c">⏰ '+c.evStart+' Uhr</div><div style="font-size:13px;font-weight:500;color:#185fa5;margin-top:6px">'+fmt(c.shHrs)+' h</div></div>''
       +'</div>'
       +'<div class="cf-actions">'
       +'<div class="cf-btn-row">'
