@@ -175,6 +175,7 @@ tr:last-child td{border-bottom:none}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div class="sec-title">Aufstellung je Trainerin</div>
       <div style="display:flex;gap:8px">
+        <button class="btn-out" onclick="exportSteuerPDF()">&#8595; Steuerberater-PDF (Summenliste)</button>
         <button class="btn-out" onclick="exportFestCSV()">&#8595; Festschreibungen CSV</button>
         <button class="btn-out" onclick="exportAll()">&#8595; Alle PDFs</button>
       </div>
@@ -920,6 +921,93 @@ function exportAll(){
   if(!rows.length)return;
   var p=document.getElementById('period').textContent;
   rows.forEach(function(row){makePDF(row,p).save('Abrechnung_'+row.t.full.replace(/ /g,'_')+'_'+p.replace(/ /g,'').replace(/–/,'-')+'.pdf');});
+}
+
+function exportSteuerPDF(){
+  if(!rows.length){alert('Bitte zuerst CSV hochladen.');return;}
+  var {jsPDF}=window.jspdf;
+  var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  var pk=[217,164,154],dk=[40,30,28],gr=[120,110,108];
+  var ps=document.getElementById('period').textContent;
+  var monat=abrMonth?monthLabel(abrMonth):'';
+  // Kopf
+  doc.setFillColor(...pk);doc.rect(0,0,297,26,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(15);doc.setFont('helvetica','bold');doc.text('Pilates Company Lübeck',14,11);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');
+  doc.text('Lohnabrechnung Summenliste'+(monat?' · Abrechnungsmonat '+monat:''),14,18);
+  doc.text('Zeitraum '+ps,14,23);
+  doc.text('Erstellt: '+new Date().toLocaleDateString('de-DE'),283,18,{align:'right'});
+  doc.setTextColor(...dk);doc.setFontSize(12);doc.setFont('helvetica','bold');doc.text('Übersicht aller Trainerinnen',14,36);
+  // Tabellenkopf
+  var cols=[
+    {x:14, w:48, lbl:'Trainerin', a:'left'},
+    {x:62, w:24, lbl:'EVS-Std', a:'right'},
+    {x:86, w:24, lbl:'Korrektur', a:'right'},
+    {x:110,w:24, lbl:'Gesamt', a:'right'},
+    {x:134,w:20, lbl:'Soll', a:'right'},
+    {x:154,w:22, lbl:'Differenz', a:'right'},
+    {x:176,w:30, lbl:'Grundgehalt', a:'right'},
+    {x:206,w:30, lbl:'Überstd.', a:'right'},
+    {x:236,w:30, lbl:'Auszahlung', a:'right'},
+    {x:266,w:18, lbl:'Status', a:'right'}
+  ];
+  var y=44;
+  doc.setFillColor(251,234,240);doc.rect(12,y-5,273,8,'F');
+  doc.setTextColor(...dk);doc.setFontSize(8.5);doc.setFont('helvetica','bold');
+  cols.forEach(function(c){doc.text(c.lbl,c.a==='right'?c.x+c.w:c.x,y,{align:c.a});});
+  y+=8;
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);
+  var sumEvs=0,sumKorr=0,sumGes=0,sumSoll=0,sumBase=0,sumOt=0,sumAus=0;
+  rows.forEach(function(row,i){
+    var man=manAmts[row.key];
+    var mt=getManTotal(row.key);
+    var aus=+((man!==null&&man!==undefined?man:row.amount)+mt).toFixed(2);
+    var otAmt=row.ot*row.t.rate;
+    if(i%2===1){doc.setFillColor(250,245,244);doc.rect(12,y-5,273,7,'F');}
+    var fest=isFest(row.key);
+    doc.setTextColor(...dk);
+    doc.text(row.t.full,cols[0].x,y);
+    doc.text(fmt(row.eHrs)+' h',cols[1].x+cols[1].w,y,{align:'right'});
+    var kc=row.corr.netto>0?[59,109,17]:row.corr.netto<0?[163,45,45]:gr;
+    doc.setTextColor(kc[0],kc[1],kc[2]);
+    doc.text((row.corr.netto>=0?'+':'')+fmt(row.corr.netto)+' h',cols[2].x+cols[2].w,y,{align:'right'});
+    doc.setTextColor(...dk);
+    doc.text(fmt(row.totH)+' h',cols[3].x+cols[3].w,y,{align:'right'});
+    doc.setTextColor(...gr);
+    doc.text(fmt(row.soll,0)+' h',cols[4].x+cols[4].w,y,{align:'right'});
+    var dcc=row.diff>0?[59,109,17]:row.diff<0?[163,45,45]:gr;
+    doc.setTextColor(dcc[0],dcc[1],dcc[2]);
+    doc.text((row.diff>=0?'+':'')+fmt(row.diff)+' h',cols[5].x+cols[5].w,y,{align:'right'});
+    doc.setTextColor(...gr);
+    doc.text(eur(row.t.base),cols[6].x+cols[6].w,y,{align:'right'});
+    doc.text(eur(otAmt),cols[7].x+cols[7].w,y,{align:'right'});
+    doc.setTextColor(...dk);doc.setFont('helvetica','bold');
+    doc.text(eur(aus),cols[8].x+cols[8].w,y,{align:'right'});
+    doc.setFont('helvetica','normal');
+    if(fest){doc.setTextColor(59,109,17);}else{doc.setTextColor(186,117,23);}doc.setFontSize(7);
+    doc.text(fest?'fest':'offen',cols[9].x+cols[9].w,y,{align:'right'});doc.setFontSize(8.5);
+    sumEvs+=row.eHrs;sumKorr+=row.corr.netto;sumGes+=row.totH;sumSoll+=row.soll;sumBase+=row.t.base;sumOt+=otAmt;sumAus+=aus;
+    y+=7;
+  });
+  // Summenzeile
+  doc.setDrawColor(...pk);doc.setLineWidth(0.5);doc.line(12,y-3,285,y-3);
+  doc.setFont('helvetica','bold');doc.setTextColor(...dk);doc.setFontSize(9);
+  doc.text('Summe ('+rows.length+')',cols[0].x,y+2);
+  doc.text(fmt(sumEvs)+' h',cols[1].x+cols[1].w,y+2,{align:'right'});
+  doc.text((sumKorr>=0?'+':'')+fmt(sumKorr)+' h',cols[2].x+cols[2].w,y+2,{align:'right'});
+  doc.text(fmt(sumGes)+' h',cols[3].x+cols[3].w,y+2,{align:'right'});
+  doc.text(fmt(sumSoll,0)+' h',cols[4].x+cols[4].w,y+2,{align:'right'});
+  doc.text('',cols[5].x+cols[5].w,y+2,{align:'right'});
+  doc.text(eur(sumBase),cols[6].x+cols[6].w,y+2,{align:'right'});
+  doc.text(eur(sumOt),cols[7].x+cols[7].w,y+2,{align:'right'});
+  doc.setTextColor(180,100,90);doc.text(eur(sumAus),cols[8].x+cols[8].w,y+2,{align:'right'});
+  y+=14;
+  doc.setTextColor(...gr);doc.setFontSize(8);doc.setFont('helvetica','normal');
+  doc.text('Berechnung: Grundgehalt (fix) + Mehrstunden über Soll × Stundensatz. Minderstunden führen nicht zu Abzug. Eversports-Kalender ist führende Referenz.',14,y);
+  doc.text('Status „fest\" = Abrechnung festgeschrieben. Diese Liste dient der Steuerberatung als Summenübersicht; Einzelabrechnungen mit Details liegen je Trainerin separat vor.',14,y+5);
+  doc.setTextColor(180,170,168);doc.setFontSize(7.5);
+  doc.text('Pilates Company Lübeck · Segeberger Str. 1 · 23617 Stockelsdorf',148,200,{align:'center'});
+  doc.save('Lohnabrechnung_Summenliste_'+(abrMonth||ps.replace(/[ .]/g,'')).replace(/ /g,'')+'.pdf');
 }
 
 function renderSta(){
