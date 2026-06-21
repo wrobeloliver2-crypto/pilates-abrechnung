@@ -1184,7 +1184,7 @@ function exportSteuerPDF(){
   doc.setTextColor(180,100,90);doc.text(eur(sumAus),cols[8].x+cols[8].w,y+2,{align:'right'});
   y+=14;
   doc.setTextColor(...gr);doc.setFontSize(8);doc.setFont('helvetica','normal');
-  doc.text('Berechnung: Grundgehalt (fix) + Mehrstunden über Soll × Stundensatz. Minderstunden führen nicht zu Abzug. Eversports-Kalender ist führende Referenz.',14,y);
+  doc.text('Berechnung: Erbrachte Stunden (Eversports + anerkannte Korrekturen + qualifizierte Feiertage) × Stundenlohn. Das monatliche Grundgehalt ist nur nachrichtlich.',14,y);
   doc.text('Status „fest\" = Abrechnung festgeschrieben. Diese Liste dient der Steuerberatung als Summenübersicht; Einzelabrechnungen mit Details liegen je Trainerin separat vor.',14,y+5);
   doc.setTextColor(180,170,168);doc.setFontSize(7.5);
   doc.text('Pilates Company Lübeck · Segeberger Str. 1 · 23617 Stockelsdorf',148,200,{align:'center'});
