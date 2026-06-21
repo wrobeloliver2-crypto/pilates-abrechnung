@@ -773,13 +773,21 @@ document.getElementById('csv-inp').addEventListener('change',function(){
   r.onload=async function(e){
     try{
       evsData=parseEVS(e.target.result);
-      setStatus(null,'Korrekturen werden geladen…');
-      await loadSheets();
+      // EVS sofort anzeigen
       buildConflicts();
       renderTable(evsData);
+      setStatus(null,'Korrekturen werden geladen…');
+      // Sheet im Hintergrund laden mit Timeout
+      var sheetTimeout=new Promise(function(res){setTimeout(res,8000);});
+      await Promise.race([loadSheets(), sheetTimeout]);
+      // Nach Sheet-Load nochmal aktualisieren falls Daten kamen
+      if(Object.keys(shData).length>0){
+        buildConflicts();
+        renderTable(evsData);
+      }
     }catch(err){
       console.error(err);
-      setStatus(false,'Fehler: '+err.message);
+      setStatus(false,'Fehler beim CSV-Verarbeiten: '+err.message);
     }
   };
   r.readAsText(this.files[0],'utf-8');
