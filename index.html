@@ -143,9 +143,9 @@ tr:last-child td{border-bottom:none}
 <body>
 
 <div class="hdr">
-  <div style="display:flex;align-items:center">
-    <span class="logo">[ ]</span>
-    <div class="logo-text">Pilates Company Lübeck<br><span class="logo-sub">Trainer-Abrechnung</span></div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <img src="logo.png" alt="Pilates Company Lübeck" style="height:40px;width:auto">
+    <div class="logo-text">Trainer-Abrechnung<br><span class="logo-sub">Pilates Company Lübeck</span></div>
   </div>
   <div class="period" id="period">Zeitraum wählen</div>
 </div>
@@ -764,7 +764,7 @@ async function loadSheets(){
     if(r2.ok){parseUrlaubSheet(await r2.text());}
   }catch(e){}
   setStatus(ok,ok?'Korrekturen geladen ✓':'Korrekturen nicht verfügbar');
-  if(evsData){buildConflicts();renderTable(evsData);}
+  // buildConflicts und renderTable werden vom Upload-Handler aufgerufen
 }
 
 document.getElementById('csv-inp').addEventListener('change',function(){
@@ -773,10 +773,10 @@ document.getElementById('csv-inp').addEventListener('change',function(){
   r.onload=async function(e){
     try{
       evsData=parseEVS(e.target.result);
+      setStatus(null,'Korrekturen werden geladen…');
+      await loadSheets();
       buildConflicts();
       renderTable(evsData);
-      setStatus(true,'EVS geladen \u2713');
-      await loadSheets();
     }catch(err){
       console.error(err);
       setStatus(false,'Fehler: '+err.message);
