@@ -212,6 +212,9 @@ var EVM={},SHM={};
 Object.keys(T).forEach(function(k){var t=T[k];EVM[t.evs]=k;if(t.sh)SHM[t.sh]=k;});
 
 var shData={},evsData=null,evsSlots=[],zStart=null,zEnd=null;
+var urlaubKonto={};
+var urlaubVerbraucht={};
+var URLAUB_SOLL={Britta:8.0,Ina:6.0,Katy:7.3,Laura:6.0,Natalia:16.0,Olga:35.0,Paula:7.1};
 var expanded={},clrDec={},clrNotes={},conflicts=[],rows=[];
 var manAmts={},guthaben={},manEntries={};
 
@@ -255,6 +258,26 @@ function parseSheet(text){
   });
 }
 
+function parseUrlaubSheet(text){
+  urlaubKonto={};
+  var lines=text.replace(/^\uFEFF/,'').split('\n').filter(function(l){return l.trim();});
+  if(!lines.length)return;
+  var hdr=lines[0].split(',').map(function(h){return h.replace(/^"|"$/g,'').trim();});
+  var idx=function(h){return hdr.indexOf(h);};
+  lines.slice(1).forEach(function(line){
+    var cols=line.split(',').map(function(c){return c.replace(/^"|"$/g,'').trim();});
+    var name=cols[idx('Trainerin')]||'';
+    var key=SHM[name];if(!key)return;
+    urlaubKonto[key]={
+      soll:parseFloat(cols[idx('Soll 2026 (h)')])||URLAUB_SOLL[key]||0,
+      ist:parseFloat(cols[idx('Ist YTD (h)')])||0,
+      rest:parseFloat(cols[idx('Rest (h)')])||0,
+      hinweis:cols[idx('Hinweis')]||''
+    };
+    // Soll aus Sheet überschreibt Hardcode
+    if(urlaubKonto[key].soll)URLAUB_SOLL[key]=urlaubKonto[key].soll;
+  });
+}
 function buildConflicts(){
   conflicts=[];
   if(!evsSlots.length)return;
@@ -294,7 +317,7 @@ function getCorr(key,start,end){
   var entries=(shData[key]||[]).filter(function(r){return r.datum>=start&&r.datum<=end;});
   var netto=0,details=[];
   entries.forEach(function(r){
-    if(r.art==='Urlaub'){netto+=Math.abs(r.vz);details.push({art:'Urlaub',vz:Math.abs(r.vz),ds:r.ds,notiz:r.notiz});}
+    if(r.art==='Urlaub'){var urlSoll=URLAUB_SOLL[key]||0;var urlVerb=urlaubVerbraucht[key]||0;var urlHrs=Math.abs(r.vz);var urlBezahlt=Math.min(urlHrs,Math.max(0,urlSoll-urlVerb));urlaubVerbraucht[key]=(urlVerb+urlHrs);netto+=urlBezahlt;var notizExtra=urlBezahlt<urlHrs?' ('+fmt(urlHrs-urlBezahlt,1)+' h über Jahressoll)':'';details.push({art:'Urlaub'+notizExtra,vz:urlBezahlt,ds:r.ds,notiz:r.notiz});}
     else if(r.art==='Kursausfall'){details.push({art:'Kursausfall',vz:0,ds:r.ds,notiz:r.notiz});}
     else if(r.art==='Gehalten'){
       var cf=conflicts.find(function(c){return c.shKey===key&&c.datum===r.ds;});
@@ -306,7 +329,7 @@ function getCorr(key,start,end){
         else if(dec==='both'){netto+=r.vz;details.push({art:'Beide (Workaround)',vz:r.vz,ds:r.ds,notiz:''});}
         else{details.push({art:'\u26a0 Clearing offen',vz:0,ds:r.ds,notiz:''});}
       } else {netto+=r.vz;details.push({art:'Gehalten',vz:r.vz,ds:r.ds,notiz:r.notiz});}
-    } else if(r.art==='Storno'){netto+=r.vz;details.push({art:'Storno',vz:r.vz,ds:r.ds,notiz:r.notiz});}
+    } else if(r.art==='Bildungsurlaub'){netto+=Math.abs(r.vz);details.push({art:'Bildungsurlaub (bezahlt)',vz:Math.abs(r.vz),ds:r.ds,notiz:r.notiz});}else if(r.art==='Storno'){netto+=r.vz;details.push({art:'Storno',vz:r.vz,ds:r.ds,notiz:r.notiz});}
   });
   return{netto:+netto.toFixed(2),details:details};
 }
@@ -484,6 +507,21 @@ function renderGuth(){
   });
   h+='</tbody><tfoot><tr class="guth-tot"><td colspan="4" style="font-size:12px;color:#a07870">Gesamtes Guthaben</td><td class="r">'+(tg>0?'<span style="color:#185fa5;font-weight:500">'+eur(tg)+'</span>':'0,00 \u20ac')+'</td><td></td></tr></tfoot></table>';
   h+='<div class="notice">Guthaben bleibt gesperrt bis Hanna es manuell freigibt.</div>';
+  h+='<div class="sec-title" style="margin-top:1.5rem;margin-bottom:12px">Urlaubskonto 2026</div>';
+  h+='<table class="guth-table"><thead><tr><th>Trainerin</th><th class="r">Soll (h)</th><th class="r">Verbraucht YTD (h)</th><th class="r">Rest (h)</th><th>Hinweis</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var uk=urlaubKonto[r.key]||{soll:URLAUB_SOLL[r.key]||0,ist:0,rest:URLAUB_SOLL[r.key]||0,hinweis:''};
+    var verbraucht=urlaubVerbraucht[r.key]||0;
+    var restNeu=+(uk.soll-verbraucht).toFixed(1);
+    h+='<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="av av-a" style="font-size:10px">'+ini(r.t.full)+'</div><span style="font-weight:500">'+r.t.full+'</span></div></td>'
+      +'<td class="r">'+fmt(uk.soll)+' h</td>'
+      +'<td class="r">'+(verbraucht>0?'<span style="color:#a32d2d">'+fmt(verbraucht)+' h</span>':'<span style="color:#a07870">0,0 h</span>')+'</td>'
+      +'<td class="r">'+(restNeu<0?'<span style="color:#a32d2d">Überschritten!</span>':'<span style="color:#3b6d11">'+fmt(restNeu)+' h</span>')+'</td>'
+      +'<td style="font-size:11px;color:#a07870">'+(uk.hinweis||'—')+'</td>'
+      +'</tr>';
+  });
+  h+='</tbody></table>';
+  h+='<div class="notice" style="margin-top:8px">Bildungsurlaub wird separat verwaltet und nicht gegen das Jahressoll angerechnet.</div>';
   el.innerHTML=h;
 }
 
@@ -491,6 +529,7 @@ function renderTable(data){
   document.getElementById('upload-zone').style.display='none';
   document.getElementById('results').style.display='block';
   var tHrs=0,tBase=0,tAmt=0;
+  urlaubVerbraucht={};
   rows=ACTIVE.map(function(key,i){
     var t=T[key];if(t.ph)return null;
     var eHrs=+(data[key]?data[key].hrs||0:0).toFixed(2);
@@ -712,15 +751,32 @@ function renderSta(){
 
 renderSta();
 
+async function loadSheets(){
+  setStatus(null,'Korrekturen werden geladen…');
+  var ok=true;
+  try{
+    var r1=await fetch('/api/sheet');
+    if(r1.ok){parseSheet(await r1.text());}
+    else{ok=false;}
+  }catch(e){ok=false;}
+  try{
+    var r2=await fetch('/api/sheet?sheet=urlaub');
+    if(r2.ok){parseUrlaubSheet(await r2.text());}
+  }catch(e){}
+  setStatus(ok,ok?'Korrekturen geladen ✓':'Korrekturen nicht verfügbar');
+  if(evsData){buildConflicts();renderTable(evsData);}
+}
+
 document.getElementById('csv-inp').addEventListener('change',function(){
   if(!this.files[0])return;
   var r=new FileReader();
-  r.onload=function(e){
+  r.onload=async function(e){
     try{
       evsData=parseEVS(e.target.result);
       buildConflicts();
       renderTable(evsData);
       setStatus(true,'EVS geladen \u2713');
+      await loadSheets();
     }catch(err){
       console.error(err);
       setStatus(false,'Fehler: '+err.message);
