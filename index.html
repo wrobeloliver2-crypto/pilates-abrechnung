@@ -470,62 +470,138 @@ function renderGuthaben(){
 function renderTable(data){
   document.getElementById('upload-zone').style.display='none';
   document.getElementById('results').style.display='block';
-  let tHrs=0,tBase=0,tAmt=0;
-  lastRows=ACTIVE.map((key,i)=>{
-    const t=TRAINERS[key];if(t.placeholder)return null;
-    const evsHrs=+(data[key]?.hrs||0).toFixed(2);
-    const corr=getCorrections(key,zyklusStart,zyklusEnd);
-    const totalH=+(evsHrs+corr.netto).toFixed(2);
-    const soll=t.wh*4;
-    const diff=+(totalH-soll).toFixed(2);
-    const ot=Math.max(0,diff);
-    const amount=+(t.base+ot*t.rate).toFixed(2);
-    const myC=conflicts.filter(c=>c.sheetKey===key||c.evsKey===key);
-    const openC=myC.filter(c=>!clearingDecisions[c.id]);
+  var tHrs=0,tBase=0,tAmt=0;
+  lastRows=ACTIVE.map(function(key,i){
+    var t=TRAINERS[key];if(t.placeholder)return null;
+    var evsHrs=+(data[key]?data[key].hrs||0:0).toFixed(2);
+    var corr=getCorrections(key,zyklusStart,zyklusEnd);
+    var totalH=+(evsHrs+corr.netto).toFixed(2);
+    var soll=t.wh*4;
+    var diff=+(totalH-soll).toFixed(2);
+    var ot=Math.max(0,diff);
+    var amount=+(t.base+ot*t.rate).toFixed(2);
+    var myC=conflicts.filter(function(c){return c.sheetKey===key||c.evsKey===key;});
+    var openC=myC.filter(function(c){return !clearingDecisions[c.id];});
     tHrs+=totalH;tBase+=t.base;
-    const man=manualAmounts[key];
-    tAmt+=man!==null&&man!==undefined?man:amount;
-    return{key,t,evsHrs,corr,totalH,soll,diff,ot,amount,count:data[key]?.count||0,rounded:data[key]?.rounded||0,myConflicts:myC,openConflicts:openC};
+    var man=manualAmounts[key];
+    var manT=getManualTotal(key);
+    tAmt+=(man!==null&&man!==undefined?man:amount)+manT;
+    return{key:key,t:t,evsHrs:evsHrs,corr:corr,totalH:totalH,soll:soll,diff:diff,ot:ot,amount:amount,
+      count:data[key]?data[key].count||0:0,rounded:data[key]?data[key].rounded||0:0,
+      myConflicts:myC,openConflicts:openC};
   }).filter(Boolean);
 
-  document.getElementById('metrics-row').innerHTML=`
-    <div class="metric"><div class="metric-label">Trainerinnen</div><div class="metric-value">${lastRows.length}</div><div class="metric-sub">aktiv</div></div>
-    <div class="metric"><div class="metric-label">Gesamtstunden</div><div class="metric-value">${fmt(tHrs)}</div><div class="metric-sub">inkl. Korrekturen</div></div>
-    <div class="metric"><div class="metric-label">Grundgehälter</div><div class="metric-value">${fmtEur(tBase)}</div><div class="metric-sub">fix gesamt</div></div>
-    <div class="metric"><div class="metric-label">Auszahlung gesamt</div><div class="metric-value" style="color:#d9a49a" id="metric-amt">${fmtEur(tAmt)}</div><div class="metric-sub">nach Anpassung</div></div>
-  `;
+  document.getElementById('metrics-row').innerHTML=
+    '<div class="metric"><div class="metric-label">Trainerinnen</div><div class="metric-value">'+lastRows.length+'</div><div class="metric-sub">aktiv</div></div>'
+    +'<div class="metric"><div class="metric-label">Gesamtstunden</div><div class="metric-value">'+fmt(tHrs)+'</div><div class="metric-sub">inkl. Korrekturen</div></div>'
+    +'<div class="metric"><div class="metric-label">Grundgehälter</div><div class="metric-value">'+fmtEur(tBase)+'</div><div class="metric-sub">fix gesamt</div></div>'
+    +'<div class="metric"><div class="metric-label">Auszahlung gesamt</div><div class="metric-value" style="color:#d9a49a" id="metric-amt">'+fmtEur(tAmt)+'</div><div class="metric-sub">nach Anpassung</div></div>';
 
-  const tbody=document.getElementById('table-body');tbody.innerHTML='';
-  lastRows.forEach(({key,t,evsHrs,corr,totalH,soll,diff,ot,amount,count,rounded,myConflicts,openConflicts},i)=>{
-    const dc=diff>0?'diff-pos':diff<0?'diff-neg':'diff-zero';
-    const ds=(diff>0?'+':'')+fmt(diff)+' h';
-    const corrHrs=corr.netto;
-    const corrStr=corrHrs===0?'—':'<span class="'+(corrHrs>0?'corr-pos':'corr-neg')+'">'+(corrHrs>0?'+':'')+fmt(corrHrs)+' h</span>';
-    const ac=i%2===0?'av-pink':'av-rose';
-    const man=manualAmounts[key];
-    const effAmt=man!==null&&man!==undefined?man:amount;
-    const isMod=man!==null&&man!==undefined&&Math.abs(man-amount)>0.01;
-    const neuGuth=isMod?+(amount-man).toFixed(2):0;
-    let clearingCell='<span style="color:#a07870;font-size:11px">—</span>';
-    if(openConflicts.length>0)clearingCell='<button class="clearing-pill clearing-open" onclick="showTab(\'clearing\')">⚠ '+openConflicts.length+' offen</button>';
-    else if(myConflicts.length>0)clearingCell='<span class="clearing-pill clearing-ok">✓ '+myConflicts.length+' ok</span>';
+  var tbody=document.getElementById('table-body');tbody.innerHTML='';
+  lastRows.forEach(function(row,i){
+    var key=row.key,t=row.t,evsHrs=row.evsHrs,corr=row.corr,totalH=row.totalH;
+    var soll=row.soll,diff=row.diff,ot=row.ot,amount=row.amount;
+    var count=row.count,rounded=row.rounded;
+    var myConflicts=row.myConflicts,openConflicts=row.openConflicts;
+    var dc=diff>0?'diff-pos':diff<0?'diff-neg':'diff-zero';
+    var ds=(diff>0?'+':'')+fmt(diff)+' h';
+    var corrHrs=corr.netto;
+    var corrStr=corrHrs===0?'—':'<span class="'+(corrHrs>0?'corr-pos':'corr-neg')+'">'+(corrHrs>0?'+':'')+fmt(corrHrs)+' h</span>';
+    var ac=i%2===0?'av-pink':'av-rose';
+    var man=manualAmounts[key];
+    var effAmt=man!==null&&man!==undefined?man:amount;
+    var isMod=man!==null&&man!==undefined&&Math.abs(man-amount)>0.01;
+    var neuGuth=isMod?+(amount-man).toFixed(2):0;
+    var clearingCell='<span style="color:#a07870;font-size:11px">—</span>';
+    if(openConflicts.length>0)
+      clearingCell='<button class="clearing-pill clearing-open" onclick="showTab('clearing')">&#9888; '+openConflicts.length+' offen</button>';
+    else if(myConflicts.some(function(x){return clearingDecisions[x.id]==='reject';}))
+      clearingCell='<span class="clearing-pill" style="background:#fcebeb;color:#a32d2d">&#10007; Abgewiesen</span>';
+    else if(myConflicts.some(function(x){return clearingDecisions[x.id]==='both';}))
+      clearingCell='<span class="clearing-pill" style="background:#faeeda;color:#854f0b">&#9888; Beide</span>';
+    else if(myConflicts.length>0)
+      clearingCell='<span class="clearing-pill clearing-ok">&#10003; '+myConflicts.length+' ok</span>';
 
-    const corrLines=corr.details.map(d=>{
-      const col=d.art.includes('✓')?'corr-pos':d.art.includes('Nicht')?'diff-zero':d.art.includes('offen')?'diff-neg':d.vz>0?'corr-pos':d.vz<0?'corr-neg':'diff-zero';
-      return'<div class="corr-line"><span style="color:#a07870">'+d.art+(d.datumStr?' · '+d.datumStr:'')+(d.notiz?' · '+d.notiz.substring(0,25):'')+'</span><span class="'+col+'">'+(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'—')+'</span></div>';
+    var corrLines=corr.details.map(function(d){
+      var col=d.art.includes('✓')?'corr-pos':d.art.includes('Nicht')?'diff-zero':d.art.includes('offen')?'diff-neg':d.vz>0?'corr-pos':d.vz<0?'corr-neg':'diff-zero';
+      return '<div class="corr-line"><span style="color:#a07870">'+d.art+(d.datumStr?' · '+d.datumStr:'')+(d.notiz?' · '+d.notiz.substring(0,25):'')+
+        '</span><span class="'+col+'">'+(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'—')+'</span></div>';
     }).join('');
 
-    const tr=document.createElement('tr');
-    tr.innerHTML='<td><div class="trainer-name"><div class="avatar '+ac+'">'+initials(t.full)+'</div><div><div style="font-weight:500;font-size:12.5px">'+t.full+'</div>'+(t.alias?'<span class="alias-badge">EVS: „'+t.evsName+'"</span>':'')+'</div></div></td><td class="right">'+fmt(evsHrs)+' h</td><td class="right">'+corrStr+'</td><td class="right" style="font-weight:500">'+fmt(totalH)+' h</td><td class="right '+dc+'">'+ds+'</td><td class="right" style="color:#a07870">'+fmtEur(amount)+'</td><td class="right"><input class="amount-input'+(isMod?' modified':'')+'" id="amt-'+key+'" value="'+effAmt.toFixed(2).replace('.',',')+'" onchange="onAmountChange(\''+key+'\',this.value)" onfocus="this.select()"></td><td class="right" id="guth-cell-'+key+'">'+(neuGuth>0?'<span class="guthaben-badge">+ '+fmtEur(neuGuth)+'</span>':'<span style="font-size:11px;color:#a07870">—</span>')+'</td><td class="right">'+clearingCell+'</td><td><div class="action-cell"><button class="pdf-btn" onclick="exportPDF(\''+key+'\')">PDF</button><button class="expand-btn" onclick="toggleDetail(\''+key+'\')" id="btn-'+key+'">▾</button></div></td>';
+    var tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><div class="trainer-name"><div class="avatar '+ac+'">'+initials(t.full)+'</div>'
+      +'<div><div style="font-weight:500;font-size:12.5px">'+t.full+'</div>'
+      +(t.alias?'<span class="alias-badge">EVS: „'+t.evsName+'“</span>':'')
+      +'</div></div></td>'
+      +'<td class="right">'+fmt(evsHrs)+' h</td>'
+      +'<td class="right">'+corrStr+'</td>'
+      +'<td class="right" style="font-weight:500">'+fmt(totalH)+' h</td>'
+      +'<td class="right '+dc+'">'+ds+'</td>'
+      +'<td class="right" style="color:#a07870">'+fmtEur(amount)+'</td>'
+      +'<td class="right"><input class="amount-input'+(isMod?' modified':'')+'" id="amt-'+key+'"'
+      +' value="'+effAmt.toFixed(2).replace('.',',')+'"'
+      +' onchange="onAmountChange(''+key+'',this.value)" onfocus="this.select()"></td>'
+      +'<td class="right" id="guth-cell-'+key+'">'+(neuGuth>0?'<span class="guthaben-badge">+ '+fmtEur(neuGuth)+'</span>':'<span style="font-size:11px;color:#a07870">—</span>')+'</td>'
+      +'<td class="right">'+clearingCell+'</td>'
+      +'<td><div class="action-cell">'
+      +'<button class="pdf-btn" onclick="exportPDF(''+key+'')">PDF</button>'
+      +'<button class="expand-btn" onclick="toggleDetail(''+key+'')" id="btn-'+key+'">▾</button>'
+      +'</div></td>';
     tbody.appendChild(tr);
 
-    const dt=document.createElement('tr');dt.id='detail-'+key;dt.style.display='none';
-    dt.className='detail-row';
-    dt.innerHTML='<td colspan="10"><div class="detail-inner"><div class="detail-grid"><div class="detail-card"><div class="detail-card-label">Stundensatz</div><div class="detail-card-value">'+fmtEur(t.rate)+'</div></div><div class="detail-card"><div class="detail-card-label">Grundgehalt (fix)</div><div class="detail-card-value">'+fmtEur(t.base)+'</div></div><div class="detail-card"><div class="detail-card-label">Guthaben-Konto</div><div class="detail-card-value" style="color:#185fa5">'+fmtEur(guthabenKonto[key]||0)+'</div></div></div><div class="calc-steps"><div class="section-title" style="margin-bottom:6px">Berechnung</div><div class="calc-row"><span class="calc-label">Eversports ('+count+' Kurse'+(rounded>0?', '+rounded+' gerundet':'')+')</span><span>'+fmt(evsHrs)+' h</span></div><div class="calc-row"><span class="calc-label">+ Korrekturen App</span><span class="'+(corrHrs===0?'':'corr-'+(corrHrs>0?'pos':'neg'))+'">'+( corrHrs===0?'keine':(corrHrs>0?'+':'')+fmt(corrHrs)+' h')+'</span></div><div class="calc-row"><span class="calc-label">= Gesamtstunden</span><span style="font-weight:500">'+fmt(totalH)+' h</span></div><div class="calc-row"><span class="calc-label">Soll ('+fmt(t.wh,1)+' h/Wo × 4)</span><span>'+fmt(soll,0)+' h</span></div><div class="calc-row"><span class="calc-label">Differenz</span><span class="'+dc+'">'+ds+'</span></div><div class="calc-row" style="margin-top:6px"><span class="calc-label">Grundgehalt</span><span>'+fmtEur(t.base)+'</span></div><div class="calc-row"><span class="calc-label">+ Überstunden ('+fmt(ot)+' h × '+fmtEur(t.rate)+')</span><span>'+fmtEur(ot*t.rate)+'</span></div><div class="calc-row total"><span class="calc-label">Berechnet</span><span>'+fmtEur(amount)+'</span></div>'+(isMod?'<div class="calc-row" style="margin-top:4px"><span class="calc-label" style="color:#185fa5">Manuell übersteuert</span><span style="color:#185fa5">'+fmtEur(effAmt)+'</span></div><div class="calc-row"><span class="calc-label" style="color:#185fa5">→ Gutgeschrieben</span><span style="color:#185fa5">+'+fmtEur(neuGuth)+'</span></div>':'')+'</div>'+(corrLines?'<div class="corr-detail"><div class="corr-detail-title">Korrekturen im Zyklus</div>'+corrLines+'</div>':'')+'<div class="corr-detail" style="margin-top:8px"><div class="corr-detail-title" style="display:flex;justify-content:space-between;align-items:center">Einmalige Sonderzahlungen <button class="manual-pay-btn" onclick="toggleManualForm(\''+key+'\')">+ Eintrag hinzufügen</button></div><div id="me-list-'+key+'" class="manual-entry-list"><span style="color:#a07870;font-size:11px">Keine Einträge</span></div><div id="me-form-'+key+'" style="display:none"><div class="manual-pay-form"><select id="me-typ-'+key+'" class="manual-pay-input" style="width:110px"><option value="plus">+ Zuzahlung</option><option value="minus">− Abzug</option></select><input id="me-betrag-'+key+'" class="manual-pay-input" style="width:90px" type="text" placeholder="Betrag €"><input id="me-notiz-'+key+'" class="manual-pay-input" style="flex:1;min-width:140px" type="text" placeholder="Begründung (erscheint auf PDF)"><button onclick="addManualEntry(\''+key+'\')" class="manual-pay-btn" style="border-color:#639922;color:#3b6d11">✓ Speichern</button></div></div></div>+'</div></td>';
+    var dt=document.createElement('tr');
+    dt.id='detail-'+key;dt.style.display='none';dt.className='detail-row';
+    var calcExtra='';
+    if(isMod)calcExtra=
+      '<div class="calc-row" style="margin-top:4px"><span class="calc-label" style="color:#185fa5">Manuell übersteuert</span><span style="color:#185fa5">'+fmtEur(effAmt)+'</span></div>'
+      +'<div class="calc-row"><span class="calc-label" style="color:#185fa5">→ Gutgeschrieben</span><span style="color:#185fa5">+'+fmtEur(neuGuth)+'</span></div>';
+    dt.innerHTML=
+      '<td colspan="10"><div class="detail-inner">'
+      +'<div class="detail-grid">'
+      +'<div class="detail-card"><div class="detail-card-label">Stundensatz</div><div class="detail-card-value">'+fmtEur(t.rate)+'</div></div>'
+      +'<div class="detail-card"><div class="detail-card-label">Grundgehalt (fix)</div><div class="detail-card-value">'+fmtEur(t.base)+'</div></div>'
+      +'<div class="detail-card"><div class="detail-card-label">Guthaben-Konto</div><div class="detail-card-value" style="color:#185fa5">'+fmtEur(guthabenKonto[key]||0)+'</div></div>'
+      +'</div>'
+      +'<div class="calc-steps">'
+      +'<div class="section-title" style="margin-bottom:6px">Berechnung</div>'
+      +'<div class="calc-row"><span class="calc-label">Eversports ('+count+' Kurse'+(rounded>0?', '+rounded+' gerundet':'')+')'+' </span><span>'+fmt(evsHrs)+' h</span></div>'
+      +'<div class="calc-row"><span class="calc-label">+ Korrekturen App</span>'
+      +'<span class="'+(corrHrs===0?'':'corr-'+(corrHrs>0?'pos':'neg'))+'">'+(corrHrs===0?'keine':(corrHrs>0?'+':'')+fmt(corrHrs)+' h')+'</span></div>'
+      +'<div class="calc-row"><span class="calc-label">= Gesamtstunden</span><span style="font-weight:500">'+fmt(totalH)+' h</span></div>'
+      +'<div class="calc-row"><span class="calc-label">Soll ('+fmt(t.wh,1)+' h/Wo × 4)</span><span>'+fmt(soll,0)+' h</span></div>'
+      +'<div class="calc-row"><span class="calc-label">Differenz</span><span class="'+dc+'">'+ds+'</span></div>'
+      +'<div class="calc-row" style="margin-top:6px"><span class="calc-label">Grundgehalt</span><span>'+fmtEur(t.base)+'</span></div>'
+      +'<div class="calc-row"><span class="calc-label">+ Überstunden ('+fmt(ot)+' h × '+fmtEur(t.rate)+')</span><span>'+fmtEur(ot*t.rate)+'</span></div>'
+      +'<div class="calc-row total"><span class="calc-label">Berechnet</span><span>'+fmtEur(amount)+'</span></div>'
+      +calcExtra
+      +'</div>'
+      +(corrLines?'<div class="corr-detail"><div class="corr-detail-title">Korrekturen im Zyklus</div>'+corrLines+'</div>':'')
+      +'<div class="corr-detail" style="margin-top:8px">'
+      +'<div class="corr-detail-title" style="display:flex;justify-content:space-between;align-items:center">'
+      +'Einmalige Sonderzahlungen '
+      +'<button class="manual-pay-btn" onclick="toggleManualForm(''+key+'')">+ Eintrag hinzufügen</button>'
+      +'</div>'
+      +'<div id="me-list-'+key+'" class="manual-entry-list"><span style="color:#a07870;font-size:11px">Keine Einträge</span></div>'
+      +'<div id="me-form-'+key+'" style="display:none">'
+      +'<div class="manual-pay-form">'
+      +'<select id="me-typ-'+key+'" class="manual-pay-input" style="width:110px">'
+      +'<option value="plus">+ Zuzahlung</option>'
+      +'<option value="minus">− Abzug</option>'
+      +'</select>'
+      +'<input id="me-betrag-'+key+'" class="manual-pay-input" style="width:90px" type="text" placeholder="Betrag €">'
+      +'<input id="me-notiz-'+key+'" class="manual-pay-input" style="flex:1;min-width:140px" type="text" placeholder="Begründung (erscheint auf PDF)">'
+      +'<button onclick="addManualEntry(''+key+'')" class="manual-pay-btn" style="border-color:#639922;color:#3b6d11">✓ Speichern</button>'
+      +'</div></div></div>'
+      +'</div></td>';
     tbody.appendChild(dt);
   });
 
-  document.getElementById('table-foot').innerHTML='<tr class="total-row"><td colspan="5" style="font-size:12px;color:#a07870">Summe</td><td class="right">'+fmtEur(lastRows.reduce((s,r)=>s+r.amount,0))+'</td><td class="right" id="total-amt">'+fmtEur(tAmt)+'</td><td></td><td></td><td></td></tr>';
+  document.getElementById('table-foot').innerHTML=
+    '<tr class="total-row"><td colspan="5" style="font-size:12px;color:#a07870">Summe</td>'
+    +'<td class="right">'+fmtEur(lastRows.reduce(function(s,r){return s+r.amount;},0))+'</td>'
+    +'<td class="right" id="total-amt">'+fmtEur(tAmt)+'</td>'
+    +'<td></td><td></td><td></td></tr>';
 }
 
 function toggleDetail(key){
@@ -653,7 +729,19 @@ document.getElementById('sheet-dot').style.background='#c0b0ae';
 document.getElementById('csv-input').addEventListener('change',function(){
   if(!this.files[0])return;
   const r=new FileReader();
-  r.onload=async e=>{evsData=parseEVS(e.target.result);await loadSheet();buildConflicts();renderTable(evsData);};
+  r.onload=async e=>{
+    try{
+      evsData=parseEVS(e.target.result);
+      await loadSheet();
+      buildConflicts();
+      renderTable(evsData);
+    }catch(err){
+      console.error('Fehler beim Verarbeiten:',err);
+      setSheetStatus('err','Fehler: '+err.message);
+      document.getElementById('upload-zone').style.display='block';
+      document.getElementById('results').style.display='none';
+    }
+  };
   r.readAsText(this.files[0],'utf-8');
 });
 </script>
