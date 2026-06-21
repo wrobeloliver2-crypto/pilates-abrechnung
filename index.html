@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pilates Company – Trainer-Abrechnung</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#2c1e1c;background:#fdf8f7;min-height:100vh}
+.header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:0.5px solid #e8dedd;background:#fff}
+.logo-mark{font-size:22px;color:#d9a49a;font-weight:300;letter-spacing:-2px;margin-right:10px}
+.logo-text{font-size:13px;font-weight:500;line-height:1.3;color:#2c1e1c}
+.logo-sub{font-size:11px;color:#a07870;font-weight:400}
+.period-badge{font-size:12px;color:#a07870;background:#fdf0ee;padding:4px 10px;border-radius:8px;border:0.5px solid #f0d0cc}
+.tabs{display:flex;border-bottom:0.5px solid #e8dedd;padding:0 1.5rem;background:#fff;overflow-x:auto}
+.tab{padding:10px 14px;font-size:13px;cursor:pointer;color:#a07870;border-bottom:2px solid transparent;margin-bottom:-0.5px;background:none;border-top:none;border-left:none;border-right:none;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.tab.active{color:#d9a49a;border-bottom-color:#d9a49a;font-weight:500}
+.tab:hover:not(.active){color:#2c1e1c}
+.badge-count{background:#c4776b;color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;font-weight:500}
+.content{padding:1.25rem 1.5rem}
+.upload-zone{border:1.5px dashed #e0c8c5;border-radius:12px;padding:2rem;text-align:center;cursor:pointer;margin-bottom:1.25rem;background:#fff}
+.upload-zone:hover{border-color:#d9a49a}
+.upload-zone .icon{font-size:2rem;color:#d9a49a;margin-bottom:8px}
+.upload-zone p{color:#a07870;font-size:13px}
+.upload-zone p strong{color:#2c1e1c}
+.sheet-status{display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;border-radius:8px;border:0.5px solid #e8dedd;margin-bottom:1.25rem;background:#fff}
+.sdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-ok{background:#639922}.dot-loading{background:#ba7517;animation:pulse 1s infinite}.dot-err{background:#e24b4a}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:1.25rem}
+.metric{background:#fff;border-radius:8px;padding:12px 14px;border:0.5px solid #e8dedd}
+.metric-label{font-size:11px;color:#a07870;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
+.metric-value{font-size:22px;font-weight:500;color:#2c1e1c}
+.metric-sub{font-size:11px;color:#a07870;margin-top:3px}
+.section-title{font-size:12px;font-weight:500;color:#a07870;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px}
+.tbl-wrap{overflow-x:auto}
+.trainer-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
+.trainer-table th{text-align:left;padding:7px 8px;font-size:10px;font-weight:500;color:#a07870;text-transform:uppercase;letter-spacing:0.4px;border-bottom:0.5px solid #e8dedd;white-space:nowrap;background:#fff}
+.trainer-table th.right{text-align:right}
+.trainer-table td{padding:8px 8px;border-bottom:0.5px solid #f0e8e6;vertical-align:middle;background:#fff}
+.trainer-table td.right{text-align:right;font-variant-numeric:tabular-nums}
+.trainer-table tr:last-child td{border-bottom:none}
+.trainer-table tbody tr:hover td{background:#fdf8f7}
+.trainer-name{display:flex;align-items:center;gap:7px}
+.avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0}
+.av-pink{background:#fbeaf0;color:#993556}
+.av-rose{background:#faece7;color:#993c1d}
+.alias-badge{font-size:10px;padding:1px 5px;border-radius:4px;background:#f5f0ef;color:#a07870;border:0.5px solid #e8dedd}
+.diff-pos{color:#3b6d11;font-weight:500}
+.diff-neg{color:#a32d2d;font-weight:500}
+.diff-zero{color:#a07870}
+.corr-pos{color:#3b6d11}.corr-neg{color:#a32d2d}
+.clearing-pill{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;cursor:pointer;border:none}
+.clearing-open{background:#faeeda;color:#854f0b}
+.clearing-ok{background:#eaf3de;color:#3b6d11}
+.expand-btn{background:none;border:none;cursor:pointer;color:#a07870;padding:2px 5px;border-radius:4px;font-size:11px}
+.expand-btn:hover{background:#fdf0ee}
+.pdf-btn{background:none;border:0.5px solid #e8dedd;border-radius:8px;padding:3px 7px;font-size:11px;cursor:pointer;color:#a07870;display:inline-flex;align-items:center;gap:3px}
+.pdf-btn:hover{background:#fdf0ee}
+.action-cell{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+.amount-input{width:82px;padding:4px 7px;border:0.5px solid #e8dedd;border-radius:8px;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;background:#fff;color:#2c1e1c}
+.amount-input.modified{border-color:#d9a49a;background:#fdf6f4}
+.amount-input:focus{outline:none;border-color:#d9a49a}
+.guthaben-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;background:#e6f1fb;color:#185fa5}
+.detail-row td{padding:0;background:#fdf8f7!important}
+.detail-inner{padding:12px 12px 12px 44px}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.detail-card{background:#fff;border:0.5px solid #e8dedd;border-radius:8px;padding:8px 10px}
+.detail-card-label{font-size:10px;color:#a07870;margin-bottom:3px}
+.detail-card-value{font-size:13px;font-weight:500}
+.calc-steps{display:flex;flex-direction:column;gap:2px}
+.calc-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
+.calc-row.total{border-top:0.5px solid #e8dedd;margin-top:4px;padding-top:8px;font-weight:500;font-size:13px}
+.calc-row .calc-label{color:#a07870}
+.corr-detail{margin-top:8px;background:#fff;border:0.5px solid #e8dedd;border-radius:8px;padding:8px 10px}
+.corr-detail-title{font-size:10px;font-weight:500;color:#a07870;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px}
+.corr-line{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:0.5px solid #f0e8e6}
+.corr-line:last-child{border-bottom:none}
+.notice{font-size:11px;color:#a07870;background:#fdf0ee;border-left:2px solid #d9a49a;padding:6px 10px;border-radius:0 8px 8px 0;margin-top:8px}
+.total-row td{font-weight:500;border-top:1px solid #e8dedd;background:#fdf8f7!important}
+.btn-outline{background:#fff;border:0.5px solid #e8dedd;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;color:#2c1e1c;display:inline-flex;align-items:center;gap:6px}
+.btn-outline:hover{background:#fdf8f7}
+.conflict-card{border:0.5px solid #e8dedd;border-radius:12px;margin-bottom:12px;overflow:hidden;background:#fff}
+.conflict-card.resolved-sheet{border-left:3px solid #639922}
+.conflict-card.resolved-evs{border-left:3px solid #185fa5}
+.conflict-card.unresolved{border-left:3px solid #ba7517}
+.conflict-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fdf8f7;border-bottom:0.5px solid #f0e8e6}
+.conflict-meta{font-size:12px;color:#a07870}
+.conflict-meta strong{color:#2c1e1c;font-weight:500}
+.conflict-status{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}
+.status-open{background:#faeeda;color:#854f0b}
+.status-sheet{background:#eaf3de;color:#3b6d11}
+.status-evs{background:#e6f1fb;color:#185fa5}
+.conflict-body{display:grid;grid-template-columns:1fr 1fr}
+.conflict-side{padding:12px 14px}
+.conflict-side+.conflict-side{border-left:0.5px solid #f0e8e6}
+.side-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+.side-label.sheet{color:#993556}.side-label.evs{color:#185fa5}
+.side-trainer{font-size:14px;font-weight:500;margin-bottom:4px}
+.side-detail{font-size:12px;color:#a07870;margin-bottom:2px}
+.conflict-actions{display:flex;gap:8px;padding:10px 14px;border-top:0.5px solid #f0e8e6;background:#fdf8f7}
+.btn-decide{flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;border:0.5px solid #e8dedd;background:#fff;color:#2c1e1c}
+.btn-decide:hover{background:#fdf0ee}
+.btn-decide.active-sheet{background:#eaf3de;border-color:#639922;color:#3b6d11}
+.btn-decide.active-evs{background:#e6f1fb;border-color:#185fa5;color:#185fa5}
+.clearing-empty{text-align:center;padding:3rem 0;color:#a07870}
+.clearing-empty .icon{font-size:2.5rem;display:block;margin-bottom:12px;color:#e8dedd}
+.guth-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:1.5rem}
+.guth-table th{text-align:left;padding:7px 10px;font-size:11px;font-weight:500;color:#a07870;text-transform:uppercase;border-bottom:0.5px solid #e8dedd;background:#fff}
+.guth-table th.right{text-align:right}
+.guth-table td{padding:9px 10px;border-bottom:0.5px solid #f0e8e6;vertical-align:middle;background:#fff}
+.guth-table td.right{text-align:right;font-variant-numeric:tabular-nums}
+.guth-table tr:last-child td{border-bottom:none}
+.release-btn{background:#fff;border:0.5px solid #639922;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;color:#3b6d11}
+.release-btn:hover{background:#eaf3de}
+.guth-total-row td{font-weight:500;border-top:1px solid #e8dedd;background:#fdf8f7!important}
+@media(max-width:600px){.metrics{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center">
+    <span class="logo-mark">[ ]</span>
+    <div class="logo-text">Pilates Company Lübeck<br><span class="logo-sub">Trainer-Abrechnung</span></div>
+  </div>
+  <div class="period-badge" id="period-label">Zeitraum wählen</div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('abrechnung')">Abrechnung</button>
+  <button class="tab" onclick="showTab('clearing')">
+    ⇄ Clearing <span class="badge-count" id="clearing-count" style="display:none">0</span>
+  </button>
+  <button class="tab" onclick="showTab('guthaben')">◎ Guthaben</button>
+  <button class="tab" onclick="showTab('stammdaten')">Stammdaten</button>
+</div>
+
+<div id="tab-abrechnung" class="content">
+  <div class="sheet-status" id="sheet-status">
+    <span class="sdot dot-loading" id="sheet-dot"></span>
+    <span id="sheet-msg">Trainer-App wird geladen…</span>
+  </div>
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('csv-input').click()">
+    <input type="file" id="csv-input" accept=".csv" style="display:none">
+    <div class="icon">↑</div>
+    <p><strong>Eversports CSV hochladen</strong></p>
+    <p>Aktivitätsbericht · Zeitraum 19. bis 19.</p>
+  </div>
+  <div id="results" style="display:none">
+    <div class="metrics" id="metrics-row"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div class="section-title">Aufstellung je Trainerin</div>
+      <button class="btn-outline" onclick="exportAllPDFs()">↓ Alle PDFs</button>
+    </div>
+    <div class="tbl-wrap">
+      <table class="trainer-table">
+        <thead><tr>
+          <th>Trainerin</th>
+          <th class="right">EVS</th>
+          <th class="right">Korr.</th>
+          <th class="right">Gesamt</th>
+          <th class="right">Diff.</th>
+          <th class="right">Berechnet</th>
+          <th class="right">Auszahlung</th>
+          <th class="right">Guthaben +</th>
+          <th class="right">Clearing</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+        <tfoot id="table-foot"></tfoot>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:#a07870">
+      Auszahlung manuell änderbar · Differenz wird auf Guthaben-Konto gutgeschrieben
+    </div>
+  </div>
+</div>
+
+<div id="tab-clearing" style="display:none" class="content">
+  <div id="clearing-body">
+    <div class="clearing-empty"><div class="icon">↑</div><p>Bitte zuerst CSV hochladen.</p></div>
+  </div>
+</div>
+
+<div id="tab-guthaben" style="display:none" class="content">
+  <div id="guthaben-body">
+    <div class="clearing-empty"><div class="icon">↑</div><p>Bitte zuerst CSV hochladen.</p></div>
+  </div>
+</div>
+
+<div id="tab-stammdaten" style="display:none" class="content">
+  <div class="section-title" style="margin-bottom:12px">Vertragsstammdaten</div>
+  <div class="tbl-wrap">
+  <table class="trainer-table" style="min-width:600px">
+    <thead><tr>
+      <th>Trainerin</th><th class="right">Seit</th>
+      <th class="right">Std/Wo</th><th class="right">Soll/Zyklus</th>
+      <th class="right">Grundgehalt</th><th class="right">Stundensatz</th><th class="right">Urlaub/Jahr</th>
+    </tr></thead>
+    <tbody id="sd-body"></tbody>
+  </table>
+  </div>
+  <div class="notice" style="margin-top:1rem">Natascha D. ab nächstem Zyklus. Natalia Semenova = „Natascha" in Eversports.</div>
+</div>
+
+<script>
+const SHEET_ID='1Jmdv9U6A4kFIT-NdS0fx5LTWK1TpA6yc51CRm9-EYvM';
+const SHEET_URL=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
+
+const TRAINERS={
+  'Britta':    {full:'Britta Leder',       wh:2.0,rate:30.00,base:259.80,urlaub:8.0, since:'01.01.2025',evsName:'Britta',   sheetName:'Britta Leder'},
+  'Ina':       {full:'Ina Schmökel',        wh:6.0,rate:20.00,base:519.60,urlaub:6.0, since:'01.07.2024',evsName:'Ina',      sheetName:'Ina Schmoekel'},
+  'Katy':      {full:'Katharina Piesik',    wh:2.0,rate:25.00,base:216.50,urlaub:8.0, since:'10.02.2026',evsName:'Katy',     sheetName:'Katharina Piesik'},
+  'Laura':     {full:'Laura Sachsenhauser', wh:1.5,rate:25.00,base:162.37,urlaub:6.0, since:'01.01.2025',evsName:'Laura',    sheetName:'Laura Sachsenhauser'},
+  'Natalia':   {full:'Natalia Semenova',    wh:4.0,rate:20.00,base:346.40,urlaub:16.0,since:'01.04.2025',evsName:'Natascha', sheetName:'Natalia Semenova',alias:true},
+  'NataschaD': {full:'Natascha D.',         wh:null,rate:null,base:null,urlaub:null,  since:'ab nächstem Zyklus',evsName:'Natascha D.',sheetName:'',placeholder:true},
+  'Olga':      {full:'Olga Uplegger',       wh:7.0,rate:20.00,base:606.20,urlaub:35.0,since:'01.02.2026',evsName:'Olga',     sheetName:'Olga Uplegger'},
+  'Paula':     {full:'Paula Smettons',      wh:2.0,rate:25.00,base:216.50,urlaub:8.0, since:'10.02.2026',evsName:'Paula',    sheetName:'Paula Smettons'},
+};
+const ACTIVE=['Britta','Ina','Katy','Laura','Natalia','Olga','Paula'];
+const EVS_MAP={},SHEET_MAP={};
+Object.entries(TRAINERS).forEach(([k,t])=>{EVS_MAP[t.evsName]=k;if(t.sheetName)SHEET_MAP[t.sheetName]=k;});
+
+let sheetData={},evsData=null,evsSlots=[],zyklusStart=null,zyklusEnd=null;
+let expanded={},clearingDecisions={},conflicts=[],lastRows=[];
+let manualAmounts={},guthabenKonto={};
+
+function initials(n){return n.split(' ').map(x=>x[0]).join('').substring(0,2).toUpperCase()}
+function fmt(n,d=1){return Number(n).toFixed(d).replace('.',',')}
+function fmtEur(n){return Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
+function parseVz(s){return parseFloat(String(s).replace(',','.'))}
+function parseDate(s){const p=s.trim().split(' ')[0].split('.');if(p.length===3)return new Date(+p[2],+p[1]-1,+p[0]);return null;}
+function dStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function fmtDate(s){try{return new Date(s+'T00:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});}catch{return s;}}
+
+function showTab(t){
+  ['abrechnung','clearing','guthaben','stammdaten'].forEach((x,i)=>{
+    document.getElementById('tab-'+x).style.display=x===t?'block':'none';
+    document.querySelectorAll('.tab')[i].classList.toggle('active',x===t);
+  });
+  if(t==='guthaben')renderGuthaben();
+}
+
+function setSheetStatus(state,msg){
+  document.getElementById('sheet-dot').className='sdot '+(state==='ok'?'dot-ok':state==='err'?'dot-err':'dot-loading');
+  document.getElementById('sheet-msg').textContent=msg;
+}
+
+async function loadSheet(){
+  setSheetStatus('loading','Trainer-App wird geladen…');
+  try{
+    const r=await fetch(SHEET_URL);if(!r.ok)throw new Error();
+    parseSheet(await r.text());
+    setSheetStatus('ok','Trainer-App geladen');
+    if(evsData){buildConflicts();renderTable(evsData);}
+  }catch(e){setSheetStatus('err','Sheet nicht erreichbar');}
+}
+
+function parseSheet(text){
+  sheetData={};
+  const lines=text.split('\n').filter(l=>l.trim());
+  const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+  const idx=h=>headers.indexOf(h);
+  lines.slice(1).forEach(line=>{
+    const cols=line.match(/(".*?"|[^,\n]+|(?<=,)(?=,))/g)||line.split(',');
+    const c=cols.map(x=>String(x||'').replace(/^"|"$/g,'').trim());
+    const key=SHEET_MAP[c[idx('Trainer')]];if(!key)return;
+    const art=c[idx('Art')];
+    const vz=parseVz(c[idx('Vorzeichen')]);if(isNaN(vz))return;
+    const datum=parseDate(c[idx('Datum')]);if(!datum)return;
+    if(!sheetData[key])sheetData[key]=[];
+    sheetData[key].push({art,vz,datum,kurs:c[idx('Kurstyp')]||'',notiz:c[idx('Notiz')]||'',datumStr:dStr(datum)});
+  });
+}
+
+function buildConflicts(){
+  conflicts=[];
+  if(!evsSlots.length)return;
+  Object.entries(sheetData).forEach(([key,entries])=>{
+    entries.forEach(sh=>{
+      if(sh.art!=='Gehalten')return;
+      if(!zyklusStart||sh.datum<zyklusStart||sh.datum>zyklusEnd)return;
+      evsSlots.forEach(ev=>{
+        if(dStr(ev.datum)!==sh.datumStr)return;
+        const km=sh.kurs&&ev.name&&(
+          sh.kurs.toLowerCase().includes('reformer')&&ev.name.toLowerCase().includes('reformer')||
+          sh.kurs.toLowerCase().includes('pilates')&&ev.name.toLowerCase().includes('pilates')||
+          sh.kurs.toLowerCase().includes('yoga')&&ev.name.toLowerCase().includes('yoga')||
+          sh.kurs.toLowerCase().includes(ev.name.toLowerCase().split(' ')[0])||
+          ev.name.toLowerCase().includes(sh.kurs.toLowerCase().split(' ')[0])
+        );
+        if(!km)return;
+        const evKey=EVS_MAP[ev.trainer];
+        if(evKey&&evKey!==key){
+          const cid=sh.datumStr+'_'+ev.start+'_'+key+'_'+evKey;
+          if(!conflicts.find(c=>c.id===cid))
+            conflicts.push({id:cid,sheetKey:key,sheetFull:TRAINERS[key].full,sheetHrs:Math.abs(sh.vz),sheetKurs:sh.kurs,sheetNotiz:sh.notiz,evsKey:evKey,evsFull:TRAINERS[evKey]?.full||ev.trainer,evsKurs:ev.name,evsStart:ev.start,evsEnd:ev.end,datum:sh.datumStr});
+        }
+      });
+    });
+  });
+  const unresolved=conflicts.filter(c=>!clearingDecisions[c.id]).length;
+  const countEl=document.getElementById('clearing-count');
+  countEl.textContent=unresolved;countEl.style.display=unresolved>0?'inline':'none';
+  renderClearing();
+}
+
+function getCorrections(key,start,end){
+  if(!sheetData[key])return{netto:0,details:[]};
+  const inRange=sheetData[key].filter(r=>r.datum>=start&&r.datum<=end);
+  let netto=0;const details=[];
+  inRange.forEach(r=>{
+    if(r.art==='Urlaub'){netto+=Math.abs(r.vz);details.push({art:'Urlaub',vz:Math.abs(r.vz),datumStr:r.datumStr,notiz:r.notiz});}
+    else if(r.art==='Kursausfall'){details.push({art:'Kursausfall',vz:0,datumStr:r.datumStr,notiz:r.notiz});}
+    else if(r.art==='Gehalten'){
+      const cf=conflicts.find(c=>c.sheetKey===key&&c.datum===r.datumStr);
+      if(cf){const dec=clearingDecisions[cf.id];
+        if(dec==='sheet'){netto+=r.vz;details.push({art:'Vertretung ✓',vz:r.vz,datumStr:r.datumStr,notiz:r.notiz});}
+        else if(dec==='evs'){details.push({art:'Nicht gewertet',vz:0,datumStr:r.datumStr,notiz:'Eversports zählt'});}
+        else{details.push({art:'⚠ Clearing offen',vz:0,datumStr:r.datumStr,notiz:''});}
+      }else{netto+=r.vz;details.push({art:'Gehalten',vz:r.vz,datumStr:r.datumStr,notiz:r.notiz});}
+    }else if(r.art==='Storno'){netto+=r.vz;details.push({art:'Storno',vz:r.vz,datumStr:r.datumStr,notiz:r.notiz});}
+  });
+  return{netto:+netto.toFixed(2),details};
+}
+
+function parseEVS(text){
+  const lines=text.replace(/^\uFEFF/,'').split('\n').filter(l=>l.trim());
+  const headers=lines[0].split(';').map(h=>h.trim());
+  const idx=h=>headers.indexOf(h);
+  const rows=lines.slice(1).map(l=>{const c=l.split(';');return{datum:c[idx('Datum')]||'',start:(c[idx('Startzeit')]||'').trim(),end:(c[idx('Endzeit')]||'').trim(),trainer:(c[idx('Trainer')]||'').trim(),name:c[idx('Name')]||''};});
+  const dates=rows.map(r=>r.datum).filter(Boolean).sort();
+  const pd=s=>{const p=s.split('.');return new Date(+p[2],+p[1]-1,+p[0]);};
+  zyklusStart=pd(dates[0]);zyklusEnd=pd(dates[dates.length-1]);
+  document.getElementById('period-label').textContent=dates[0]+' – '+dates[dates.length-1];
+  evsSlots=rows.filter(r=>r.start&&r.end).map(r=>({datum:pd(r.datum),start:r.start,end:r.end,trainer:r.trainer,name:r.name}));
+  function mins(s,e){const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return(eh*60+em)-(sh*60+sm);}
+  function round(m){return m===55?60:m===85?90:m}
+  const byT={};
+  rows.forEach(r=>{
+    const key=EVS_MAP[r.trainer];
+    if(!key||!ACTIVE.includes(key)||!r.start||!r.end)return;
+    if(!byT[key])byT[key]={hrs:0,count:0,rounded:0};
+    const raw=mins(r.start,r.end);const rd=round(raw);
+    byT[key].hrs+=rd/60;byT[key].count++;if(raw!==rd)byT[key].rounded++;
+  });
+  return byT;
+}
+
+function onAmountChange(key,val){
+  const row=lastRows.find(r=>r.key===key);if(!row)return;
+  const parsed=parseFloat(val.replace(',','.'));
+  if(!isNaN(parsed)&&parsed>=0){
+    const diff=+(row.amount-parsed).toFixed(2);
+    manualAmounts[key]=+parsed.toFixed(2);
+    if(diff>0){if(!guthabenKonto[key])guthabenKonto[key]=0;guthabenKonto[key]=+(guthabenKonto[key]+diff).toFixed(2);}
+  }else{manualAmounts[key]=null;}
+  const man=manualAmounts[key];
+  document.getElementById('amt-'+key).className='amount-input'+(man!==null&&man!==undefined&&Math.abs(man-row.amount)>0.01?' modified':'');
+  const gCell=document.getElementById('guth-cell-'+key);
+  if(gCell){const ng=man!==null&&man!==undefined?+(row.amount-man).toFixed(2):0;gCell.innerHTML=ng>0?`<span class="guthaben-badge">+ ${fmtEur(ng)}</span>`:'<span style="font-size:11px;color:#a07870">—</span>';}
+  updateTotals();
+}
+
+function updateTotals(){
+  let t=0;lastRows.forEach(r=>{const m=manualAmounts[r.key];t+=m!==null&&m!==undefined?m:r.amount;});
+  const el=document.getElementById('total-amt');if(el)el.textContent=fmtEur(t);
+  const m=document.getElementById('metric-amt');if(m)m.textContent=fmtEur(t);
+}
+
+function releaseGuthaben(key){
+  if(!guthabenKonto[key]||guthabenKonto[key]<=0)return;
+  if(!confirm('Guthaben von '+fmtEur(guthabenKonto[key])+' für '+TRAINERS[key].full+' freigeben?'))return;
+  guthabenKonto[key]=0;renderGuthaben();
+}
+
+function renderGuthaben(){
+  const el=document.getElementById('guthaben-body');
+  if(!lastRows.length){el.innerHTML='<div class="clearing-empty"><div class="icon">↑</div><p>Bitte zuerst CSV hochladen.</p></div>';return;}
+  const ps=document.getElementById('period-label').textContent;
+  let tg=0;
+  let h='<div class="section-title" style="margin-bottom:12px">Guthaben-Konten · Stand nach '+ps+'</div><table class="guth-table"><thead><tr><th>Trainerin</th><th class="right">Berechnet</th><th class="right">Ausgezahlt</th><th class="right">Neu gutgeschrieben</th><th class="right">Kontostand</th><th class="right">Freigabe</th></tr></thead><tbody>';
+  lastRows.forEach(({key,t,amount})=>{
+    const man=manualAmounts[key];
+    const aus=man!==null&&man!==undefined?man:amount;
+    const neu=+(amount-aus).toFixed(2);
+    const konto=guthabenKonto[key]||0;
+    tg+=konto;
+    h+=`<tr><td><div class="trainer-name"><div class="avatar av-pink" style="font-size:10px">${initials(t.full)}</div><span style="font-weight:500">${t.full}</span></div></td><td class="right">${fmtEur(amount)}</td><td class="right">${fmtEur(aus)}</td><td class="right">${neu>0?'<span style="color:#185fa5;font-weight:500">+'+fmtEur(neu)+'</span>':'<span style="color:#a07870">—</span>'}</td><td class="right">${konto>0.01?'<span style="color:#185fa5;font-weight:500">'+fmtEur(konto)+'</span>':'<span style="color:#a07870">0,00 €</span>'}</td><td class="right">${konto>0.01?'<button class="release-btn" onclick="releaseGuthaben(\''+key+'\')">Freigeben</button>':'<span style="font-size:12px;color:#a07870">—</span>'}</td></tr>`;
+  });
+  h+='</tbody><tfoot><tr class="guth-total-row"><td colspan="4" style="font-size:12px;color:#a07870">Gesamtes Guthaben</td><td class="right">'+(tg>0?'<span style="color:#185fa5;font-weight:500">'+fmtEur(tg)+'</span>':'0,00 €')+'</td><td></td></tr></tfoot></table>';
+  h+='<div class="notice">Guthaben bleibt gesperrt bis Hanna es manuell freigibt. Nach Freigabe wird der Betrag zur nächsten Abrechnung addiert.</div>';
+  el.innerHTML=h;
+}
+
+function renderTable(data){
+  document.getElementById('upload-zone').style.display='none';
+  document.getElementById('results').style.display='block';
+  let tHrs=0,tBase=0,tAmt=0;
+  lastRows=ACTIVE.map((key,i)=>{
+    const t=TRAINERS[key];if(t.placeholder)return null;
+    const evsHrs=+(data[key]?.hrs||0).toFixed(2);
+    const corr=getCorrections(key,zyklusStart,zyklusEnd);
+    const totalH=+(evsHrs+corr.netto).toFixed(2);
+    const soll=t.wh*4;
+    const diff=+(totalH-soll).toFixed(2);
+    const ot=Math.max(0,diff);
+    const amount=+(t.base+ot*t.rate).toFixed(2);
+    const myC=conflicts.filter(c=>c.sheetKey===key||c.evsKey===key);
+    const openC=myC.filter(c=>!clearingDecisions[c.id]);
+    tHrs+=totalH;tBase+=t.base;
+    const man=manualAmounts[key];
+    tAmt+=man!==null&&man!==undefined?man:amount;
+    return{key,t,evsHrs,corr,totalH,soll,diff,ot,amount,count:data[key]?.count||0,rounded:data[key]?.rounded||0,myConflicts:myC,openConflicts:openC};
+  }).filter(Boolean);
+
+  document.getElementById('metrics-row').innerHTML=`
+    <div class="metric"><div class="metric-label">Trainerinnen</div><div class="metric-value">${lastRows.length}</div><div class="metric-sub">aktiv</div></div>
+    <div class="metric"><div class="metric-label">Gesamtstunden</div><div class="metric-value">${fmt(tHrs)}</div><div class="metric-sub">inkl. Korrekturen</div></div>
+    <div class="metric"><div class="metric-label">Grundgehälter</div><div class="metric-value">${fmtEur(tBase)}</div><div class="metric-sub">fix gesamt</div></div>
+    <div class="metric"><div class="metric-label">Auszahlung gesamt</div><div class="metric-value" style="color:#d9a49a" id="metric-amt">${fmtEur(tAmt)}</div><div class="metric-sub">nach Anpassung</div></div>
+  `;
+
+  const tbody=document.getElementById('table-body');tbody.innerHTML='';
+  lastRows.forEach(({key,t,evsHrs,corr,totalH,soll,diff,ot,amount,count,rounded,myConflicts,openConflicts},i)=>{
+    const dc=diff>0?'diff-pos':diff<0?'diff-neg':'diff-zero';
+    const ds=(diff>0?'+':'')+fmt(diff)+' h';
+    const corrHrs=corr.netto;
+    const corrStr=corrHrs===0?'—':'<span class="'+(corrHrs>0?'corr-pos':'corr-neg')+'">'+(corrHrs>0?'+':'')+fmt(corrHrs)+' h</span>';
+    const ac=i%2===0?'av-pink':'av-rose';
+    const man=manualAmounts[key];
+    const effAmt=man!==null&&man!==undefined?man:amount;
+    const isMod=man!==null&&man!==undefined&&Math.abs(man-amount)>0.01;
+    const neuGuth=isMod?+(amount-man).toFixed(2):0;
+    let clearingCell='<span style="color:#a07870;font-size:11px">—</span>';
+    if(openConflicts.length>0)clearingCell='<button class="clearing-pill clearing-open" onclick="showTab(\'clearing\')">⚠ '+openConflicts.length+' offen</button>';
+    else if(myConflicts.length>0)clearingCell='<span class="clearing-pill clearing-ok">✓ '+myConflicts.length+' ok</span>';
+
+    const corrLines=corr.details.map(d=>{
+      const col=d.art.includes('✓')?'corr-pos':d.art.includes('Nicht')?'diff-zero':d.art.includes('offen')?'diff-neg':d.vz>0?'corr-pos':d.vz<0?'corr-neg':'diff-zero';
+      return'<div class="corr-line"><span style="color:#a07870">'+d.art+(d.datumStr?' · '+d.datumStr:'')+(d.notiz?' · '+d.notiz.substring(0,25):'')+'</span><span class="'+col+'">'+(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'—')+'</span></div>';
+    }).join('');
+
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><div class="trainer-name"><div class="avatar '+ac+'">'+initials(t.full)+'</div><div><div style="font-weight:500;font-size:12.5px">'+t.full+'</div>'+(t.alias?'<span class="alias-badge">EVS: „'+t.evsName+'"</span>':'')+'</div></div></td><td class="right">'+fmt(evsHrs)+' h</td><td class="right">'+corrStr+'</td><td class="right" style="font-weight:500">'+fmt(totalH)+' h</td><td class="right '+dc+'">'+ds+'</td><td class="right" style="color:#a07870">'+fmtEur(amount)+'</td><td class="right"><input class="amount-input'+(isMod?' modified':'')+'" id="amt-'+key+'" value="'+effAmt.toFixed(2).replace('.',',')+'" onchange="onAmountChange(\''+key+'\',this.value)" onfocus="this.select()"></td><td class="right" id="guth-cell-'+key+'">'+(neuGuth>0?'<span class="guthaben-badge">+ '+fmtEur(neuGuth)+'</span>':'<span style="font-size:11px;color:#a07870">—</span>')+'</td><td class="right">'+clearingCell+'</td><td><div class="action-cell"><button class="pdf-btn" onclick="exportPDF(\''+key+'\')">PDF</button><button class="expand-btn" onclick="toggleDetail(\''+key+'\')" id="btn-'+key+'">▾</button></div></td>';
+    tbody.appendChild(tr);
+
+    const dt=document.createElement('tr');dt.id='detail-'+key;dt.style.display='none';
+    dt.className='detail-row';
+    dt.innerHTML='<td colspan="10"><div class="detail-inner"><div class="detail-grid"><div class="detail-card"><div class="detail-card-label">Stundensatz</div><div class="detail-card-value">'+fmtEur(t.rate)+'</div></div><div class="detail-card"><div class="detail-card-label">Grundgehalt (fix)</div><div class="detail-card-value">'+fmtEur(t.base)+'</div></div><div class="detail-card"><div class="detail-card-label">Guthaben-Konto</div><div class="detail-card-value" style="color:#185fa5">'+fmtEur(guthabenKonto[key]||0)+'</div></div></div><div class="calc-steps"><div class="section-title" style="margin-bottom:6px">Berechnung</div><div class="calc-row"><span class="calc-label">Eversports ('+count+' Kurse'+(rounded>0?', '+rounded+' gerundet':'')+')</span><span>'+fmt(evsHrs)+' h</span></div><div class="calc-row"><span class="calc-label">+ Korrekturen App</span><span class="'+(corrHrs===0?'':'corr-'+(corrHrs>0?'pos':'neg'))+'">'+( corrHrs===0?'keine':(corrHrs>0?'+':'')+fmt(corrHrs)+' h')+'</span></div><div class="calc-row"><span class="calc-label">= Gesamtstunden</span><span style="font-weight:500">'+fmt(totalH)+' h</span></div><div class="calc-row"><span class="calc-label">Soll ('+fmt(t.wh,1)+' h/Wo × 4)</span><span>'+fmt(soll,0)+' h</span></div><div class="calc-row"><span class="calc-label">Differenz</span><span class="'+dc+'">'+ds+'</span></div><div class="calc-row" style="margin-top:6px"><span class="calc-label">Grundgehalt</span><span>'+fmtEur(t.base)+'</span></div><div class="calc-row"><span class="calc-label">+ Überstunden ('+fmt(ot)+' h × '+fmtEur(t.rate)+')</span><span>'+fmtEur(ot*t.rate)+'</span></div><div class="calc-row total"><span class="calc-label">Berechnet</span><span>'+fmtEur(amount)+'</span></div>'+(isMod?'<div class="calc-row" style="margin-top:4px"><span class="calc-label" style="color:#185fa5">Manuell übersteuert</span><span style="color:#185fa5">'+fmtEur(effAmt)+'</span></div><div class="calc-row"><span class="calc-label" style="color:#185fa5">→ Gutgeschrieben</span><span style="color:#185fa5">+'+fmtEur(neuGuth)+'</span></div>':'')+'</div>'+(corrLines?'<div class="corr-detail"><div class="corr-detail-title">Korrekturen im Zyklus</div>'+corrLines+'</div>':'')+'</div></td>';
+    tbody.appendChild(dt);
+  });
+
+  document.getElementById('table-foot').innerHTML='<tr class="total-row"><td colspan="5" style="font-size:12px;color:#a07870">Summe</td><td class="right">'+fmtEur(lastRows.reduce((s,r)=>s+r.amount,0))+'</td><td class="right" id="total-amt">'+fmtEur(tAmt)+'</td><td></td><td></td><td></td></tr>';
+}
+
+function toggleDetail(key){
+  const row=document.getElementById('detail-'+key);const btn=document.getElementById('btn-'+key);
+  expanded[key]=!expanded[key];row.style.display=expanded[key]?'table-row':'none';btn.textContent=expanded[key]?'▴':'▾';
+}
+
+function makePDFDoc(row,ps){
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const{t,evsHrs,corr,totalH,soll,diff,ot,amount}=row;
+  const man=manualAmounts[row.key];
+  const aus=man!==null&&man!==undefined?man:amount;
+  const gn=+(amount-aus).toFixed(2);
+  const ks=guthabenKonto[row.key]||0;
+  const pk=[217,164,154],dk=[40,30,28],gr=[120,110,108];
+  doc.setFillColor(...pk);doc.rect(0,0,210,28,'F');
+  doc.setTextColor(255,255,255);doc.setFontSize(16);doc.setFont('helvetica','bold');doc.text('Pilates Company Lübeck',14,12);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text('Stundenabrechnung · '+ps,14,20);doc.text('Erstellt: '+new Date().toLocaleDateString('de-DE'),196,20,{align:'right'});
+  doc.setTextColor(...dk);doc.setFontSize(14);doc.setFont('helvetica','bold');doc.text(t.full,14,38);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(...gr);doc.text('Vertragsstart: '+t.since+' · '+fmt(t.wh,1)+' Std/Wo · '+fmtEur(t.rate)+'/Std',14,44);
+  doc.setDrawColor(...pk);doc.setLineWidth(0.4);doc.line(14,48,196,48);
+  let y=56;
+  const r2=(l,v,bold=false,col=dk)=>{doc.setTextColor(...gr);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text(l,14,y);doc.setTextColor(...col);if(bold)doc.setFont('helvetica','bold');doc.text(String(v),196,y,{align:'right'});doc.setFont('helvetica','normal');y+=7;};
+  r2('Eversports-Stunden',fmt(evsHrs)+' h');
+  r2('+ Korrekturen Trainer-App',(corr.netto>=0?'+':'')+fmt(corr.netto)+' h');
+  doc.setDrawColor(220,210,208);doc.setLineWidth(0.2);doc.line(14,y-2,196,y-2);
+  r2('= Gesamtstunden',fmt(totalH)+' h',true);y+=2;
+  r2('Soll-Stunden ('+fmt(t.wh,1)+' h/Wo × 4 Wo)',fmt(soll,0)+' h');
+  r2('Differenz',(diff>=0?'+':'')+fmt(diff)+' h');y+=2;
+  doc.setDrawColor(...pk);doc.setLineWidth(0.4);doc.line(14,y-2,196,y-2);
+  r2('Grundgehalt (fix)',fmtEur(t.base));r2('+ Überstunden ('+fmt(ot)+' h × '+fmtEur(t.rate)+')',fmtEur(ot*t.rate));y+=2;
+  doc.setFillColor(251,234,240);doc.rect(12,y-5,184,10,'F');
+  doc.setTextColor(...dk);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.text('Berechnet',14,y+1);doc.setTextColor(180,100,90);doc.text(fmtEur(amount),196,y+1,{align:'right'});y+=14;
+  if(gn>0||ks>0){
+    doc.setFillColor(230,241,251);doc.rect(12,y-5,184,gn>0&&ks>0?20:12,'F');
+    doc.setTextColor(24,95,165);doc.setFontSize(10);doc.setFont('helvetica','bold');doc.text('Auszahlung (manuell)',14,y+1);doc.text(fmtEur(aus),196,y+1,{align:'right'});y+=7;
+    if(gn>0){doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text('→ Neu gutgeschrieben auf Konto',14,y+1);doc.text('+'+fmtEur(gn),196,y+1,{align:'right'});y+=6;}
+    if(ks>0){doc.text('Kontostand gesamt (gesperrt bis Freigabe)',14,y+1);doc.text(fmtEur(ks),196,y+1,{align:'right'});y+=6;}
+    y+=4;
+  }
+  if(corr.details.length){
+    doc.setTextColor(...gr);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.text('KORREKTUREN IM ZYKLUS',14,y);y+=5;doc.setFont('helvetica','normal');
+    corr.details.forEach(d=>{doc.setTextColor(...gr);doc.text(d.art+(d.datumStr?' · '+fmtDate(d.datumStr):'')+(d.notiz?' · '+d.notiz.substring(0,40):''),14,y);doc.setTextColor(...dk);doc.text(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'—',196,y,{align:'right'});y+=5;});
+  }
+  doc.setTextColor(180,170,168);doc.setFontSize(7.5);doc.text('Pilates Company Lübeck · Segeberger Str. 1 · 23617 Stockelsdorf',105,287,{align:'center'});
+  return doc;
+}
+
+function exportPDF(key){
+  const row=lastRows.find(r=>r.key===key);if(!row)return;
+  const p=document.getElementById('period-label').textContent;
+  makePDFDoc(row,p).save('Abrechnung_'+row.t.full.replace(/ /g,'_')+'_'+p.replace(/ /g,'').replace(/–/,'-')+'.pdf');
+}
+function exportAllPDFs(){
+  if(!lastRows.length)return;
+  const p=document.getElementById('period-label').textContent;
+  lastRows.forEach(row=>makePDFDoc(row,p).save('Abrechnung_'+row.t.full.replace(/ /g,'_')+'_'+p.replace(/ /g,'').replace(/–/,'-')+'.pdf'));
+}
+
+function decide(id,who){
+  clearingDecisions[id]=who;
+  const u=conflicts.filter(c=>!clearingDecisions[c.id]).length;
+  const el=document.getElementById('clearing-count');el.textContent=u;el.style.display=u>0?'inline':'none';
+  renderClearing();if(evsData)renderTable(evsData);
+}
+
+function renderClearing(){
+  const el=document.getElementById('clearing-body');
+  if(!conflicts.length){el.innerHTML=evsData?'<div class="clearing-empty"><div class="icon">✓</div><p>Keine Konflikte.</p></div>':'<div class="clearing-empty"><div class="icon">↑</div><p>Bitte zuerst CSV hochladen.</p></div>';return;}
+  const open=conflicts.filter(c=>!clearingDecisions[c.id]);
+  const done=conflicts.filter(c=>clearingDecisions[c.id]);
+  let h='<div style="background:#fdf8f7;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-size:13px;display:flex;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#ba7517;display:inline-block"></span>'+open.length+' offen</span><span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#639922;display:inline-block"></span>'+done.length+' geklärt</span></div>';
+  const rc=c=>{
+    const dec=clearingDecisions[c.id];
+    const cc=dec==='sheet'?'resolved-sheet':dec==='evs'?'resolved-evs':'unresolved';
+    const sl=dec==='sheet'?'<span class="conflict-status status-sheet">'+TRAINERS[c.sheetKey]?.full?.split(' ')[0]+' zählt</span>':dec==='evs'?'<span class="conflict-status status-evs">'+(TRAINERS[c.evsKey]?.full||c.evsFull).split(' ')[0]+' zählt</span>':'<span class="conflict-status status-open">Klärung erforderlich</span>';
+    return'<div class="conflict-card '+cc+'"><div class="conflict-header"><div class="conflict-meta"><strong>'+fmtDate(c.datum)+'</strong> · '+c.evsStart+'–'+c.evsEnd+' · '+fmt(c.sheetHrs)+' Std.</div>'+sl+'</div><div class="conflict-body"><div class="conflict-side"><div class="side-label sheet">Trainer-App</div><div class="side-trainer">'+c.sheetFull+'</div><div class="side-detail">'+c.sheetKurs+'</div>'+(c.sheetNotiz?'<div class="side-detail" style="font-style:italic">'+c.sheetNotiz+'</div>':'')+'<div style="font-size:13px;font-weight:500;color:#993556;margin-top:6px">'+fmt(c.sheetHrs)+' h</div></div><div class="conflict-side"><div class="side-label evs">Eversports</div><div class="side-trainer">'+c.evsFull+'</div><div class="side-detail">'+c.evsKurs+'</div><div class="side-detail">'+c.evsStart+'–'+c.evsEnd+'</div><div style="font-size:13px;font-weight:500;color:#185fa5;margin-top:6px">'+fmt(c.sheetHrs)+' h</div></div></div><div class="conflict-actions"><button class="btn-decide'+(dec==='sheet'?' active-sheet':'')+'" onclick="decide(\''+c.id+'\',\'sheet\')">✓ '+c.sheetFull.split(' ')[0]+' (Vertretung)</button><button class="btn-decide'+(dec==='evs'?' active-evs':'')+'" onclick="decide(\''+c.id+'\',\'evs\')">✓ '+c.evsFull.split(' ')[0]+' (kein Tausch)</button></div></div>';
+  };
+  h+=open.map(rc).join('');
+  if(done.length){h+='<div class="section-title" style="margin-top:1.5rem;margin-bottom:10px">Geklärte Fälle</div>';h+=done.map(rc).join('');}
+  el.innerHTML=h;
+}
+
+function renderStammdaten(){
+  const tbody=document.getElementById('sd-body');
+  Object.entries(TRAINERS).forEach(([key,t])=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><div class="trainer-name"><div class="avatar av-pink" style="font-size:10px">'+initials(t.full)+'</div><div><span style="font-weight:500">'+t.full+'</span>'+(t.placeholder?'<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#faeeda;color:#854f0b;margin-left:4px">ab nächstem Zyklus</span>':'')+(t.alias?'<div><span class="alias-badge" style="margin-top:2px">EVS: „'+t.evsName+'"</span></div>':'')+'</div></div></td><td class="right" style="color:#a07870;font-size:12px">'+t.since+'</td><td class="right">'+(t.wh!==null?fmt(t.wh,1)+' h':'—')+'</td><td class="right">'+(t.wh?fmt(t.wh*4,0)+' h':'—')+'</td><td class="right">'+(t.base!==null?fmtEur(t.base):'—')+'</td><td class="right">'+(t.rate!==null?fmtEur(t.rate):'—')+'</td><td class="right">'+(t.urlaub!==null?fmt(t.urlaub)+' h':'— Platzhalter')+'</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+renderStammdaten();
+loadSheet();
+document.getElementById('csv-input').addEventListener('change',function(){
+  if(!this.files[0])return;
+  const r=new FileReader();
+  r.onload=async e=>{evsData=parseEVS(e.target.result);await loadSheet();buildConflicts();renderTable(evsData);};
+  r.readAsText(this.files[0],'utf-8');
+});
+</script>
+</body>
+</html>
