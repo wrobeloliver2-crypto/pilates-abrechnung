@@ -63,6 +63,9 @@ tr:last-child td{border-bottom:none}
 .exp-btn:hover{background:#fdf0ee}
 .pdf-btn{background:none;border:0.5px solid #e8dedd;border-radius:8px;padding:3px 7px;font-size:11px;cursor:pointer;color:#a07870}
 .pdf-btn:hover{background:#fdf0ee}
+.fest-btn{background:#fff;border:0.5px solid #d9a49a;border-radius:8px;padding:3px 7px;font-size:11px;cursor:pointer;color:#993556;white-space:nowrap}
+.fest-btn:hover{background:#fdf0ee}
+.fest-btn.done{background:#eef7e9;border-color:#9fc97f;color:#3b6d11}
 .act-cell{display:flex;align-items:center;gap:4px;justify-content:flex-end}
 .det-row td{padding:0;background:#fdf8f7!important}
 .det-inner{padding:12px 12px 12px 44px}
@@ -147,7 +150,10 @@ tr:last-child td{border-bottom:none}
     <img src="logo.png" alt="Pilates Company Lübeck" style="height:56px;width:auto">
     <div class="logo-text">Trainer-Abrechnung<br><span class="logo-sub">Pilates Company Lübeck</span></div>
   </div>
-  <div class="period" id="period">Zeitraum wählen</div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <input type="month" id="abr-month" onchange="onMonthChange()" style="font-size:12px;padding:4px 8px;border-radius:8px;border:0.5px solid #f0d0cc;background:#fdf0ee;color:#7a5650">
+    <div class="period" id="period">Zeitraum wählen</div>
+  </div>
 </div>
 
 <div class="tabs">
@@ -162,13 +168,16 @@ tr:last-child td{border-bottom:none}
   <div class="upload-zone" id="upload-zone" onclick="document.getElementById('csv-inp').click()">
     <input type="file" id="csv-inp" accept=".csv" style="display:none">
     <p><strong>Eversports CSV hochladen</strong></p>
-    <p style="margin-top:6px">Aktivitätsbericht &middot; Zeitraum 19. bis 19.</p>
+    <p style="margin-top:6px">Aktivitätsbericht &middot; Abrechnungszyklus 20. bis 19.</p>
   </div>
   <div id="results" style="display:none">
     <div class="metrics" id="metrics"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div class="sec-title">Aufstellung je Trainerin</div>
-      <button class="btn-out" onclick="exportAll()">&#8595; Alle PDFs</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-out" onclick="exportFestCSV()">&#8595; Festschreibungen CSV</button>
+        <button class="btn-out" onclick="exportAll()">&#8595; Alle PDFs</button>
+      </div>
     </div>
     <div class="tbl-wrap">
       <table>
@@ -217,6 +226,19 @@ var urlaubVerbraucht={};
 var URLAUB_SOLL={Britta:8.0,Ina:6.0,Katy:7.3,Laura:6.0,Natalia:16.0,Olga:35.0,Paula:7.1};
 var expanded={},clrDec={},clrNotes={},conflicts=[],rows=[],redundantGehalten={};
 var manAmts={},guthaben={},manEntries={};
+var festschreibungen={};
+var abrMonth=null;
+try{var _fs=localStorage.getItem('pc_festschreibungen');if(_fs)festschreibungen=JSON.parse(_fs);}catch(e){}
+function saveFest(){try{localStorage.setItem('pc_festschreibungen',JSON.stringify(festschreibungen));}catch(e){}}
+// Abrechnungsmonat (z.B. "2026-06" = Juni) → Zeitraum 20.05. bis 19.06. (Monat = Enddatum)
+function cycleFromMonth(ym){
+  var p=ym.split('-');var y=+p[0],m=+p[1];
+  var end=new Date(y,m-1,19);
+  var sm=m-1,sy=y;if(sm<1){sm=12;sy=y-1;}
+  var start=new Date(sy,sm-1,20);
+  return{start:start,end:end};
+}
+function monthLabel(ym){var n=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];var p=ym.split('-');return n[+p[1]-1]+' '+p[0];}
 
 function ini(n){return n.split(' ').map(function(x){return x[0];}).join('').substring(0,2).toUpperCase();}
 function fmt(n,d){d=d===undefined?1:d;return Number(n).toFixed(d).replace('.',',');}
@@ -292,6 +314,7 @@ function buildConflicts(){
     );
   }
   Object.keys(shData).forEach(function(key){
+    if(isFest(key))return; // Festgeschriebene Trainerin: keine Clearings mehr anzeigen
     (shData[key]||[]).forEach(function(sh){
       if(sh.art!=='Gehalten')return;
       if(!zStart||sh.datum<zStart||sh.datum>zEnd)return;
@@ -347,10 +370,11 @@ function getCorr(key,start,end){
       var cf=conflicts.find(function(c){return c.shKey===key&&c.datum===r.ds;});
       if(cf){
         var dec=clrDec[cf.id];
-        if(dec==='sheet'){netto+=r.vz;details.push({art:'Vertretung \u2713',vz:r.vz,ds:r.ds,notiz:r.notiz});}
-        else if(dec==='evs'){details.push({art:'Nicht gewertet',vz:0,ds:r.ds,notiz:'Eversports z\u00e4hlt'});}
-        else if(dec==='reject'){details.push({art:'Abgewiesen',vz:0,ds:r.ds,notiz:clrNotes[cf.id]||''});}
-        else if(dec==='both'){netto+=r.vz;details.push({art:'Beide (Workaround)',vz:r.vz,ds:r.ds,notiz:''});}
+        var erl=clrNotes[cf.id]||'';
+        if(dec==='sheet'){netto+=r.vz;details.push({art:'Vertretung anerkannt \u2713',vz:r.vz,ds:r.ds,notiz:r.notiz,clrErl:erl});}
+        else if(dec==='evs'){details.push({art:'Nicht gewertet (Eversports z\u00e4hlt)',vz:0,ds:r.ds,notiz:'',clrErl:erl});}
+        else if(dec==='reject'){details.push({art:'Nicht berechtigt',vz:0,ds:r.ds,notiz:'',clrErl:erl});}
+        else if(dec==='both'){netto+=r.vz;details.push({art:'Beide abgerechnet (Workaround)',vz:r.vz,ds:r.ds,notiz:'',clrErl:erl});}
         else{details.push({art:'\u26a0 Clearing offen',vz:0,ds:r.ds,notiz:''});}
       } else {netto+=r.vz;details.push({art:'Gehalten',vz:r.vz,ds:r.ds,notiz:r.notiz});}
     } else if(r.art==='Bildungsurlaub'){netto+=Math.abs(r.vz);details.push({art:'Bildungsurlaub (bezahlt)',vz:Math.abs(r.vz),ds:r.ds,notiz:r.notiz});}else if(r.art==='Storno'){netto+=r.vz;details.push({art:'Storno',vz:r.vz,ds:r.ds,notiz:r.notiz});}
@@ -369,8 +393,17 @@ function parseEVS(text){
   var r2=lines.slice(1).map(function(l){var c=l.split(';');return{datum:c[idx('Datum')]||'',start:(c[idx('Startzeit')]||'').trim(),end:(c[idx('Endzeit')]||'').trim(),trainer:(c[idx('Trainer')]||'').trim(),name:c[idx('Name')]||''};});
   var dates=r2.map(function(r){return r.datum;}).filter(function(d){return /^\d{2}\.\d{2}\.\d{4}/.test(d.trim());}).sort(function(a,b){return pd(a)-pd(b);});
   if(!dates.length)throw new Error('Keine Datumsangaben in CSV gefunden');
-  zStart=pd(dates[0]);zEnd=pd(dates[dates.length-1]);
-  document.getElementById('period').textContent=dates[0]+' \u2013 '+dates[dates.length-1];
+  // Abrechnungsmonat bestimmen: aus Picker, sonst aus CSV-Enddatum ableiten
+  if(!abrMonth){
+    var lastD=pd(dates[dates.length-1]);
+    // Enddatum 19. → der Monat selbst ist der Abrechnungsmonat; sonst der Monat des Enddatums
+    var ym=lastD.getFullYear()+'-'+String(lastD.getMonth()+1).padStart(2,'0');
+    abrMonth=ym;
+    document.getElementById('abr-month').value=ym;
+  }
+  var cyc=cycleFromMonth(abrMonth);
+  zStart=cyc.start;zEnd=cyc.end;
+  document.getElementById('period').textContent=ds(zStart).split('-').reverse().join('.')+' \u2013 '+ds(zEnd).split('-').reverse().join('.');
   evsSlots=r2.filter(function(r){return r.start&&r.end;}).map(function(r){return{datum:pd(r.datum),start:r.start,end:r.end,trainer:r.trainer,name:r.name};});
   function mins(s,e){var sh=s.split(':'),eh=e.split(':');return(+eh[0]*60+ +eh[1])-(+sh[0]*60+ +sh[1]);}
   function round(m){return m===55?60:m===85?90:m;}
@@ -378,11 +411,99 @@ function parseEVS(text){
   r2.forEach(function(r){
     var key=EVM[r.trainer];
     if(!key||!ACTIVE.includes(key)||!r.start||!r.end)return;
+    if(/^\d{2}\.\d{2}\.\d{4}/.test(r.datum.trim())){var rd0=pd(r.datum);if(zStart&&(rd0<zStart||rd0>zEnd))return;}
     if(!byT[key])byT[key]={hrs:0,count:0,rounded:0};
     var raw=mins(r.start,r.end),rd=round(raw);
     byT[key].hrs+=rd/60;byT[key].count++;if(raw!==rd)byT[key].rounded++;
   });
   return byT;
+}
+
+function onMonthChange(){
+  abrMonth=document.getElementById('abr-month').value||null;
+  if(!abrMonth)return;
+  var cyc=cycleFromMonth(abrMonth);
+  zStart=cyc.start;zEnd=cyc.end;
+  document.getElementById('period').textContent=ds(zStart).split('-').reverse().join('.')+' \u2013 '+ds(zEnd).split('-').reverse().join('.');
+  if(evsData){buildConflicts();renderTable(evsData);}
+}
+
+function festKey(key){return (abrMonth||'?')+'|'+key;}
+function isFest(key){return !!festschreibungen[festKey(key)];}
+
+function festBtn(key,row){
+  if(isFest(key)){
+    return '<button class="fest-btn done" onclick="undoFest(\''+key+'\')" title="Festschreibung aufheben">\u2713 fest</button>';
+  }
+  // Festschreiben nur erlaubt wenn keine offenen Clearings dieser Trainerin
+  var hasOpen=row.opC&&row.opC.length>0;
+  if(hasOpen){
+    return '<button class="fest-btn" disabled title="Erst alle Clearing-F\u00e4lle kl\u00e4ren" style="opacity:.4;cursor:not-allowed">\u26a1 fest</button>';
+  }
+  return '<button class="fest-btn" onclick="festschreiben(\''+key+'\')" title="Abrechnung festschreiben">\u26a1 fest</button>';
+}
+
+function festschreiben(key){
+  if(!abrMonth){alert('Bitte zuerst einen Abrechnungsmonat w\u00e4hlen.');return;}
+  var row=rows.find(function(r){return r.key===key;});
+  if(!row)return;
+  var man=manAmts[key];
+  var effAmt=man!==null&&man!==undefined?man:row.amount;
+  var mt=getManTotal(key);
+  var neuGuth=(man!==null&&man!==undefined&&Math.abs(man-row.amount)>0.01)?+(row.amount-man).toFixed(2):0;
+  // Clearing-Entscheidungen dieser Trainerin als Text
+  var myC=conflicts.filter(function(c){return c.shKey===key||c.evKey===key;});
+  var clTxt=myC.map(function(c){var d=clrDec[c.id]||'offen';return c.datum+':'+d;}).join('; ');
+  var snap={
+    ts:new Date().toISOString(),
+    monat:monthLabel(abrMonth),
+    monatKey:abrMonth,
+    trainer:row.t.full,
+    soll:row.soll,
+    istEvs:row.eHrs,
+    korr:row.corr.netto,
+    gesamt:row.totH,
+    diff:row.diff,
+    base:row.t.base,
+    rate:row.t.rate,
+    auszahlung:+(effAmt+mt).toFixed(2),
+    guthabenNeu:neuGuth,
+    clearing:clTxt,
+    notiz:''
+  };
+  festschreibungen[festKey(key)]=snap;
+  saveFest();
+  renderTable(evsData);
+}
+
+function undoFest(key){
+  if(!confirm('Festschreibung f\u00fcr diese Trainerin aufheben?'))return;
+  delete festschreibungen[festKey(key)];
+  saveFest();
+  renderTable(evsData);
+}
+
+function clearingReset(){
+  if(!confirm('Alle aktuellen Clearing-Entscheidungen l\u00f6schen? Die Festschreibungen bleiben erhalten.'))return;
+  clrDec={};clrNotes={};
+  if(evsData){buildConflicts();renderTable(evsData);}
+}
+
+function exportFestCSV(){
+  var keys=Object.keys(festschreibungen);
+  if(!keys.length){alert('Noch keine Festschreibungen vorhanden.');return;}
+  var hdr=['Festgeschrieben am','Abrechnungsmonat','Trainerin','Soll-Stunden','Ist-Stunden EVS','Korrektur-Stunden','Gesamtstunden','Differenz','Grundgehalt','Stundensatz','Auszahlung','Guthaben neu','Clearing-Entscheidungen','Notiz'];
+  var rowsCsv=keys.map(function(k){var s=festschreibungen[k];return [
+    new Date(s.ts).toLocaleString('de-DE'),s.monat,s.trainer,
+    fmt(s.soll),fmt(s.istEvs),fmt(s.korr),fmt(s.gesamt),fmt(s.diff),
+    s.base.toFixed(2).replace('.',','),s.rate.toFixed(2).replace('.',','),
+    s.auszahlung.toFixed(2).replace('.',','),s.guthabenNeu.toFixed(2).replace('.',','),
+    '"'+(s.clearing||'').replace(/"/g,'""')+'"','"'+(s.notiz||'').replace(/"/g,'""')+'"'
+  ].join(',');});
+  var csv=hdr.join(',')+'\n'+rowsCsv.join('\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='Festschreibungen_Pilates.csv';a.click();
 }
 
 function decide(id,who){
@@ -402,9 +523,10 @@ function renderClr(){
   }
   var open=conflicts.filter(function(c){return !clrDec[c.id];});
   var done=conflicts.filter(function(c){return !!clrDec[c.id];});
-  var h='<div style="background:#fdf8f7;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-size:13px;display:flex;gap:16px">'
+  var h='<div style="background:#fdf8f7;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-size:13px;display:flex;gap:16px;align-items:center">'
     +'<span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#ba7517;display:inline-block"></span>'+open.length+' offen</span>'
     +'<span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#639922;display:inline-block"></span>'+done.length+' gekl\u00e4rt</span>'
+    +'<button class="btn-out" style="margin-left:auto;padding:4px 10px;font-size:12px" onclick="clearingReset()">\u21bb Clearing zur\u00fccksetzen</button>'
     +'</div>';
   function rc(c){
     var dec=clrDec[c.id];
@@ -415,7 +537,7 @@ function renderClr(){
       :dec==='reject'?'<span class="cf-status s-rej">Nicht berechtigt</span>'
       :dec==='both'?'<span class="cf-status s-both">Beide abgerechnet</span>'
       :'<span class="cf-status s-open">Kl\u00e4rung erforderlich</span>';
-    var rejBlock=dec==='reject'?'<div style="padding:0 0 6px"><input class="rej-inp" placeholder="Begr\u00fcndung (wird dem Trainer angezeigt)..." value="'+(clrNotes[c.id]||'')+'" onchange="clrNotes[\''+c.id+'\']=this.value"></div>':'';
+    var noteBlock=dec?'<div style="padding:6px 0 0"><input class="rej-inp" placeholder="Erl\u00e4uterung f\u00fcr die Trainerin (erscheint in ihrer Abrechnung)..." value="'+(clrNotes[c.id]||'').replace(/"/g,'&quot;')+'" onchange="clrNotes[\''+c.id+'\']=this.value;if(evsData)renderTable(evsData);"></div>':'';
     var bothBlock=dec==='both'?'<div class="both-notice">\u26a0 Workaround aktiv \u2014 wird entfernt sobald alle Eintr\u00e4ge Anfangszeiten haben.</div>':'';
     var hdrTime=isNoEvs?(c.shVon?c.shVon+' Uhr':'ohne Zeit'):(c.evStart+'\u2013'+c.evEnd);
     var timeWarn=isNoEvs
@@ -445,7 +567,7 @@ function renderClr(){
         +'<div class="cf-btn-row">'
         +'<button class="dec-btn'+(dec==='reject'?' a-rej':'')+'" onclick="decide(\''+c.id+'\',\'reject\')">\u2717 Nicht berechtigt</button>'
         +'</div>'
-        +rejBlock
+        +noteBlock
         +'</div>';
     } else {
       actions='<div class="cf-actions">'
@@ -457,7 +579,8 @@ function renderClr(){
         +'<button class="dec-btn'+(dec==='reject'?' a-rej':'')+'" onclick="decide(\''+c.id+'\',\'reject\')">\u2717 Nicht berechtigt</button>'
         +'<button class="dec-btn'+(dec==='both'?' a-both':'')+'" style="font-size:11px" onclick="decide(\''+c.id+'\',\'both\')">\u26a0 Beide abrechnen (Workaround)</button>'
         +'</div>'
-        +rejBlock+bothBlock
+        +bothBlock
+        +noteBlock
         +'</div>';
     }
     return '<div class="cf-card '+cc+'">'
@@ -640,7 +763,9 @@ function renderTable(data){
 
     var corrLines=row.corr.details.map(function(d){
       var col=d.art.includes('\u2713')?'cp':d.art.includes('Nicht')||d.art.includes('Abgew')?'d0':d.art.includes('offen')?'cn':d.vz>0?'cp':d.vz<0?'cn':'d0';
-      return '<div class="corr-line"><span style="color:#a07870">'+d.art+(d.ds?' \u00b7 '+d.ds:'')+(d.notiz?' \u00b7 '+d.notiz.substring(0,25):'')+'</span><span class="'+col+'">'+(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'\u2014')+'</span></div>';
+      var main='<div class="corr-line"><span style="color:#a07870">'+d.art+(d.ds?' \u00b7 '+fd(d.ds):'')+(d.notiz?' \u00b7 '+d.notiz.substring(0,25):'')+'</span><span class="'+col+'">'+(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'\u2014')+'</span></div>';
+      if(d.clrErl)main+='<div style="font-size:11px;color:#185fa5;padding:2px 0 5px;font-style:italic">\u270e '+d.clrErl+'</div>';
+      return main;
     }).join('');
 
     var calcExtra='';
@@ -666,7 +791,7 @@ function renderTable(data){
       +'<td class="r"><input class="amt-inp'+(isMod?' mod':'')+'" id="amt-'+key+'" value="'+effAmt.toFixed(2).replace('.',',')+'" onchange="onAmtChange(\''+key+'\',this.value)" onfocus="this.select()"></td>'
       +'<td class="r" id="gc-'+key+'">'+(neuGuth>0?'<span class="guth-badge">+ '+eur(neuGuth)+'</span>':'<span style="font-size:11px;color:#a07870">\u2014</span>')+'</td>'
       +'<td class="r">'+clCell+'</td>'
-      +'<td><div class="act-cell"><button class="pdf-btn" onclick="exportOne(\''+key+'\')">PDF</button><button class="exp-btn" onclick="togDet(\''+key+'\')" id="btn-'+key+'">\u25be</button></div></td>';
+      +'<td><div class="act-cell">'+festBtn(key,row)+'<button class="pdf-btn" onclick="exportOne(\''+key+'\')">PDF</button><button class="exp-btn" onclick="togDet(\''+key+'\')" id="btn-'+key+'">\u25be</button></div></td>';
     tbody.appendChild(tr);
 
     var dt=document.createElement('tr');dt.id='det-'+key;dt.style.display='none';dt.className='det-row';
@@ -779,6 +904,7 @@ function makePDF(row,ps){
     row.corr.details.forEach(function(d){
       doc.setTextColor(...gr);doc.text(d.art+(d.ds?' · '+fd(d.ds):'')+(d.notiz?' · '+d.notiz.substring(0,40):''),14,y);
       doc.setTextColor(...dk);doc.text(d.vz!==0?(d.vz>0?'+':'')+fmt(d.vz)+' h':'—',196,y,{align:'right'});y+=5;
+      if(d.clrErl){doc.setTextColor(24,95,165);doc.setFont('helvetica','italic');doc.text('  Erläuterung: '+d.clrErl.substring(0,80),14,y);doc.setFont('helvetica','normal');y+=5;}
     });
   }
   doc.setTextColor(180,170,168);doc.setFontSize(7.5);doc.text('Pilates Company Lübeck · Segeberger Str. 1 · 23617 Stockelsdorf',105,287,{align:'center'});
