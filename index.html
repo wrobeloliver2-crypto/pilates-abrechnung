@@ -263,6 +263,60 @@ function setStatus(ok,msg){
   document.getElementById('s-msg').textContent=msg;
 }
 
+// Zerlegt einen Gehalten-Sammeleintrag in Einzelstunden anhand der Notiz.
+// Format A: "2 Stunden Pilates, 1 Stunde Reformer" → 2x Pilates(1h) + 1x Reformer(1h)
+// Format B: "3 Kurse á 1 Stunde" / "2 Kurse á 1,5 Stunden" → n x (Dauer h), Kurstyp bleibt
+// Ohne erkennbares Muster: Eintrag bleibt als 1 Block (unverändert).
+function splitGehalten(base){
+  if(base.art!=='Gehalten')return [base];
+  var notiz=(base.notiz||'').toLowerCase();
+  var out=[];
+  // Format A: Kurstyp-Nennungen mit Stundenzahl
+  var reA=/(\d+(?:[.,]\d+)?)\s*(?:stunden?|std\.?|h)\s+(pilates|reformer|yoga)/g;
+  var mA,foundA=[];
+  while((mA=reA.exec(notiz))!==null){
+    foundA.push({n:parseFloat(mA[1].replace(',','.')),kurs:mA[2]});
+  }
+  if(foundA.length){
+    foundA.forEach(function(f){
+      // n Stunden dieses Kurstyps → n Einzelstunden à 1h (bzw. Reststunde)
+      var rem=f.n;
+      var kursName=f.kurs.charAt(0).toUpperCase()+f.kurs.slice(1);
+      while(rem>0.001){
+        var h=Math.min(1,rem);
+        out.push(Object.assign({},base,{vz:Math.sign(base.vz)*h,kurs:kursName,_split:true,_parent:base.ds+'|'+base.kurs}));
+        rem-=h;
+      }
+    });
+    // Falls die Summe der erkannten Stunden < Gesamteintrag, Rest als ursprünglichen Kurstyp
+    var sumA=foundA.reduce(function(s,f){return s+f.n;},0);
+    var restA=Math.abs(base.vz)-sumA;
+    if(restA>0.001){
+      var rem2=restA;
+      while(rem2>0.001){var h2=Math.min(1,rem2);out.push(Object.assign({},base,{vz:Math.sign(base.vz)*h2,_split:true,_parent:base.ds+'|'+base.kurs}));rem2-=h2;}
+    }
+    return out;
+  }
+  // Format B: "n Kurse á X Stunde(n)"
+  var reB=/(\d+)\s*kurse?\s*[aá]\s*(\d+(?:[.,]\d+)?)/;
+  var mB=notiz.match(reB);
+  if(mB){
+    var cnt=parseInt(mB[1],10);
+    var dur=parseFloat(mB[2].replace(',','.'));
+    for(var i=0;i<cnt;i++){
+      out.push(Object.assign({},base,{vz:Math.sign(base.vz)*dur,_split:true,_parent:base.ds+'|'+base.kurs}));
+    }
+    return out;
+  }
+  // Kein Muster, aber Mehrstunden-Block (vz>1) ohne Startzeit → in 1h-Einheiten splitten für Einzelprüfung
+  if(Math.abs(base.vz)>1.001 && !base.von){
+    var rem3=Math.abs(base.vz);
+    while(rem3>0.001){var h3=Math.min(1,rem3);out.push(Object.assign({},base,{vz:Math.sign(base.vz)*h3,_split:true,_parent:base.ds+'|'+base.kurs}));rem3-=h3;}
+    return out;
+  }
+  return [base];
+}
+
 function parseSheet(text){
   shData={};
   var lines=text.split('\n').filter(function(l){return l.trim();});
@@ -277,7 +331,8 @@ function parseSheet(text){
     var datum=pd(c[idx('Datum')]);if(!datum)return;
     var von=c[idx('Von')]||c[idx('Startzeit')]||'';
     if(!shData[key])shData[key]=[];
-    shData[key].push({art:art,vz:vz,datum:datum,kurs:c[idx('Kurstyp')]||'',notiz:c[idx('Notiz')]||'',ds:ds(datum),von:von});
+    var baseEntry={art:art,vz:vz,datum:datum,kurs:c[idx('Kurstyp')]||'',notiz:c[idx('Notiz')]||'',ds:ds(datum),von:von};
+    splitGehalten(baseEntry).forEach(function(e){shData[key].push(e);});
   });
 }
 
@@ -314,43 +369,48 @@ function buildConflicts(){
       evName.toLowerCase().includes(shKurs.toLowerCase().split(' ')[0])
     );
   }
+  // Pro Tag+Kurstyp: EVS-Slots werden einzeln "verbraucht", damit jede Sheet-Stunde
+  // gegen genau einen EVS-Slot geprüft wird (nicht die Summe gegen einen Slot).
+  var usedSlots={}; // slotKey → true
+  function slotId(ev){return ds(ev.datum)+'|'+ev.start+'|'+ev.name+'|'+ev.trainer;}
+  // Sheet-Einträge chronologisch und mit Zeit zuerst, damit getimete Stunden ihren Slot zuerst greifen
+  var allSh=[];
   Object.keys(shData).forEach(function(key){
-    if(isFest(key))return; // Festgeschriebene Trainerin: keine Clearings mehr anzeigen
+    if(isFest(key))return;
     (shData[key]||[]).forEach(function(sh){
       if(sh.art!=='Gehalten')return;
       if(!zStart||sh.datum<zStart||sh.datum>zEnd)return;
-      // Eversports ist führend. Suche passende EVS-Slots am selben Tag mit gleichem Kurstyp.
-      var sameDay=evsSlots.filter(function(ev){return ds(ev.datum)===sh.ds&&kursMatch(sh.kurs,ev.name);});
-      // Bei vorhandener Sheet-Startzeit zuerst auf exakt passende Zeit filtern
-      var timed=sh.von?sameDay.filter(function(ev){return ev.start===sh.von;}):[];
-      var candidates=timed.length?timed:sameDay;
-      // Bestätigt Eversports DIESELBE Trainerin in einem passenden Slot? Dann kein Clearing.
-      var confirmedSelf=candidates.some(function(ev){return EVM[ev.trainer]===key;});
-      if(confirmedSelf){
-        // EVS enthält diese Stunde bereits unter derselben Trainerin → Sheet-Erfassung ist Doppelerfassung, darf NICHT nochmal zählen
-        var rkey=key+'|'+sh.ds+'|'+sh.kurs+'|'+(sh.von||'')+'|'+sh.vz;
-        redundantGehalten[rkey]=true;
-        return;
-      }
-      if(candidates.length){
-        // EVS belegt den Slot mit einer ANDEREN (oder unbekannten) Trainerin → Clearing
-        candidates.forEach(function(ev){
-          var evKey=EVM[ev.trainer];
-          if(evKey===key)return;
-          var timeMatch=!sh.von||!ev.start?null:(sh.von===ev.start);
-          var cid=sh.ds+'_'+(ev.start||'na')+'_'+key+'_'+(evKey||ev.trainer||'unbekannt');
-          if(!conflicts.find(function(c){return c.id===cid;})){
-            conflicts.push({id:cid,kind:'mismatch',shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:evKey,evFull:evKey&&T[evKey]?T[evKey].full:(ev.trainer||'Unbekannt'),evKurs:ev.name,evStart:ev.start,evEnd:ev.end,datum:sh.ds,timeMatch:timeMatch});
-          }
-        });
-      } else {
-        // Gar kein passender EVS-Slot → Erfassung ohne EVS-Beleg → Clearing
-        var cid2=sh.ds+'_noevs_'+key+'_'+(sh.von||'na')+'_'+sh.kurs;
-        if(!conflicts.find(function(c){return c.id===cid2;})){
-          conflicts.push({id:cid2,kind:'noevs',shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:null,evFull:null,evKurs:null,evStart:null,evEnd:null,datum:sh.ds,timeMatch:null});
-        }
-      }
+      allSh.push({key:key,sh:sh});
     });
+  });
+  allSh.sort(function(a,b){return (b.sh.von?1:0)-(a.sh.von?1:0);}); // mit Startzeit zuerst
+  allSh.forEach(function(item){
+    var key=item.key,sh=item.sh;
+    var sameDay=evsSlots.filter(function(ev){return ds(ev.datum)===sh.ds&&kursMatch(sh.kurs,ev.name)&&!usedSlots[slotId(ev)];});
+    var timed=sh.von?sameDay.filter(function(ev){return ev.start===sh.von;}):[];
+    var pool=timed.length?timed:sameDay;
+    // Bevorzugt: Slot der Trainerin selbst (bestätigt) → redundant
+    var selfSlot=pool.find(function(ev){return EVM[ev.trainer]===key;});
+    if(selfSlot){
+      usedSlots[slotId(selfSlot)]=true;
+      var rkey=key+'|'+sh.ds+'|'+sh.kurs+'|'+(sh.von||'')+'|'+sh.vz+'|'+(sh._idx||'');
+      redundantGehalten[rkey]=true;
+      sh._redundant=true;
+      return;
+    }
+    if(pool.length){
+      // Erster freier Slot einer ANDEREN Trainerin → ein Clearing-Fall für DIESE eine Stunde
+      var ev=pool[0];
+      usedSlots[slotId(ev)]=true;
+      var evKey=EVM[ev.trainer];
+      var timeMatch=!sh.von||!ev.start?null:(sh.von===ev.start);
+      var cid=sh.ds+'_'+(ev.start||'na')+'_'+key+'_'+(evKey||ev.trainer||'unbekannt')+'_'+(sh._idx||conflicts.length);
+      conflicts.push({id:cid,kind:'mismatch',shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:evKey,evFull:evKey&&T[evKey]?T[evKey].full:(ev.trainer||'Unbekannt'),evKurs:ev.name,evStart:ev.start,evEnd:ev.end,datum:sh.ds,timeMatch:timeMatch,shRef:sh});
+    } else {
+      // Kein freier passender EVS-Slot → Erfassung ohne EVS-Beleg → Clearing
+      var cid2=sh.ds+'_noevs_'+key+'_'+(sh.von||'na')+'_'+sh.kurs+'_'+(sh._idx||conflicts.length);
+      conflicts.push({id:cid2,kind:'noevs',shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:null,evFull:null,evKurs:null,evStart:null,evEnd:null,datum:sh.ds,timeMatch:null,shRef:sh});
+    }
   });
   var u=conflicts.filter(function(c){return !clrDec[c.id];}).length;
   var badge=document.getElementById('clr-badge');
@@ -366,18 +426,18 @@ function getCorr(key,start,end){
     if(r.art==='Urlaub'||r.art==='Ausfall/Urlaub'){var urlSoll=URLAUB_SOLL[key]||0;var urlVerb=urlaubVerbraucht[key]||0;var urlHrs=Math.abs(r.vz);var urlBezahlt=Math.min(urlHrs,Math.max(0,urlSoll-urlVerb));urlaubVerbraucht[key]=(urlVerb+urlHrs);netto+=urlBezahlt;var notizExtra=urlBezahlt<urlHrs?' ('+fmt(urlHrs-urlBezahlt,1)+' h über Jahressoll)':'';details.push({art:'Urlaub'+notizExtra,vz:urlBezahlt,ds:r.ds,notiz:r.notiz});}
     else if(r.art==='Kursausfall'){details.push({art:'Kursausfall',vz:0,ds:r.ds,notiz:r.notiz});}
     else if(r.art==='Gehalten'){
-      var rkey=key+'|'+r.ds+'|'+r.kurs+'|'+(r.von||'')+'|'+r.vz;
-      if(redundantGehalten[rkey]){details.push({art:'Bereits in Eversports',vz:0,ds:r.ds,notiz:'Doppelerfassung \u2013 nicht erneut gez\u00e4hlt'});return;}
-      var cf=conflicts.find(function(c){return c.shKey===key&&c.datum===r.ds;});
+      if(r._redundant){details.push({art:'Bereits in Eversports',vz:0,ds:r.ds,notiz:'Doppelerfassung \u2013 nicht erneut gez\u00e4hlt'+(r._split?' (Einzelstunde aus Sammeleintrag)':'')});return;}
+      var cf=conflicts.find(function(c){return c.shRef===r;});
       if(cf){
         var dec=clrDec[cf.id];
         var erl=clrNotes[cf.id]||'';
-        if(dec==='sheet'){netto+=r.vz;details.push({art:'Vertretung anerkannt \u2713',vz:r.vz,ds:r.ds,notiz:r.notiz,clrErl:erl});}
-        else if(dec==='evs'){details.push({art:'Nicht gewertet (Eversports z\u00e4hlt)',vz:0,ds:r.ds,notiz:'',clrErl:erl});}
-        else if(dec==='reject'){details.push({art:'Nicht berechtigt',vz:0,ds:r.ds,notiz:'',clrErl:erl});}
-        else if(dec==='both'){netto+=r.vz;details.push({art:'Beide abgerechnet (Workaround)',vz:r.vz,ds:r.ds,notiz:'',clrErl:erl});}
-        else{details.push({art:'\u26a0 Clearing offen',vz:0,ds:r.ds,notiz:''});}
-      } else {netto+=r.vz;details.push({art:'Gehalten',vz:r.vz,ds:r.ds,notiz:r.notiz});}
+        var splitInfo=r._split?' \u00b7 Einzelstunde':'';
+        if(dec==='sheet'){netto+=r.vz;details.push({art:'Vertretung anerkannt \u2713'+splitInfo,vz:r.vz,ds:r.ds,notiz:r.notiz,clrErl:erl});}
+        else if(dec==='evs'){details.push({art:'Nicht gewertet (Eversports z\u00e4hlt)'+splitInfo,vz:0,ds:r.ds,notiz:'',clrErl:erl});}
+        else if(dec==='reject'){details.push({art:'Nicht berechtigt'+splitInfo,vz:0,ds:r.ds,notiz:'',clrErl:erl});}
+        else if(dec==='both'){netto+=r.vz;details.push({art:'Beide abgerechnet (Workaround)'+splitInfo,vz:r.vz,ds:r.ds,notiz:'',clrErl:erl});}
+        else{details.push({art:'\u26a0 Clearing offen'+splitInfo,vz:0,ds:r.ds,notiz:''});}
+      } else {netto+=r.vz;details.push({art:'Gehalten'+(r._split?' \u00b7 Einzelstunde':''),vz:r.vz,ds:r.ds,notiz:r.notiz});}
     } else if(r.art==='Bildungsurlaub'){netto+=Math.abs(r.vz);details.push({art:'Bildungsurlaub (bezahlt)',vz:Math.abs(r.vz),ds:r.ds,notiz:r.notiz});}else if(r.art==='Storno'){netto+=r.vz;details.push({art:'Storno',vz:r.vz,ds:r.ds,notiz:r.notiz});}
   });
   return{netto:+netto.toFixed(2),details:details};
@@ -592,6 +652,7 @@ function renderClr(){
       +'<div class="side-lbl sh">Trainer-App</div>'
       +'<div class="side-name">'+c.shFull+'</div>'
       +'<div class="side-det">'+c.shKurs+'</div>'
+      +(c.shRef&&c.shRef._split?'<div class="side-det" style="color:#185fa5;font-size:11px">\u25f3 Einzelstunde aus Sammeleintrag</div>':'')
       +(c.shVon?'<div class="side-det" style="font-weight:500;color:#2c1e1c">\u23f0 '+c.shVon+' Uhr</div>':'<div class="side-det" style="color:#ba7517">\u26a0 Keine Startzeit</div>')
       +(c.shNotiz?'<div class="side-det" style="font-style:italic">'+c.shNotiz+'</div>':'')
       +'<div style="font-size:13px;font-weight:500;color:#993556;margin-top:6px">'+fmt(c.shHrs)+' h</div>'
