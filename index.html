@@ -295,13 +295,13 @@ function buildConflicts(){
           ev.name.toLowerCase().includes(sh.kurs.toLowerCase().split(' ')[0])
         );
         if(!km)return;
-        // Startzeit-Abgleich: wenn Sheet-Eintrag eine Startzeit hat, muss sie übereinstimmen
-        if(sh.von&&ev.start&&sh.von!==ev.start)return;
+        // Startzeit-Abgleich: Übereinstimmung als Flag merken, nicht hart blockieren
+        var timeMatch=!sh.von||!ev.start?null:(sh.von===ev.start);
         var evKey=EVM[ev.trainer];
         if(evKey&&evKey!==key){
           var cid=sh.ds+'_'+ev.start+'_'+key+'_'+evKey;
           if(!conflicts.find(function(c){return c.id===cid;})){
-            conflicts.push({id:cid,shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:evKey,evFull:T[evKey]?T[evKey].full:ev.trainer,evKurs:ev.name,evStart:ev.start,evEnd:ev.end,datum:sh.ds});
+            conflicts.push({id:cid,shKey:key,shFull:T[key].full,shHrs:Math.abs(sh.vz),shKurs:sh.kurs,shNotiz:sh.notiz,shVon:sh.von,evKey:evKey,evFull:T[evKey]?T[evKey].full:ev.trainer,evKurs:ev.name,evStart:ev.start,evEnd:ev.end,datum:sh.ds,timeMatch:timeMatch});
           }
         }
       });
@@ -343,7 +343,7 @@ function parseEVS(text){
   var hdr=lines[0].split(';').map(function(h){return h.trim();});
   var idx=function(h){return hdr.indexOf(h);};
   var r2=lines.slice(1).map(function(l){var c=l.split(';');return{datum:c[idx('Datum')]||'',start:(c[idx('Startzeit')]||'').trim(),end:(c[idx('Endzeit')]||'').trim(),trainer:(c[idx('Trainer')]||'').trim(),name:c[idx('Name')]||''};});
-  var dates=r2.map(function(r){return r.datum;}).filter(Boolean).sort();
+  var dates=r2.map(function(r){return r.datum;}).filter(function(d){return /^\d{2}\.\d{2}\.\d{4}/.test(d.trim());}).sort(function(a,b){return pd(a)-pd(b);});
   if(!dates.length)throw new Error('Keine Datumsangaben in CSV gefunden');
   zStart=pd(dates[0]);zEnd=pd(dates[dates.length-1]);
   document.getElementById('period').textContent=dates[0]+' \u2013 '+dates[dates.length-1];
@@ -392,8 +392,10 @@ function renderClr(){
       :'<span class="cf-status s-open">Kl\u00e4rung erforderlich</span>';
     var rejBlock=dec==='reject'?'<div style="padding:0 0 6px"><input class="rej-inp" placeholder="Begr\u00fcndung (wird dem Trainer angezeigt)..." value="'+(clrNotes[c.id]||'')+'" onchange="clrNotes[\''+c.id+'\']=this.value"></div>':'';
     var bothBlock=dec==='both'?'<div class="both-notice">\u26a0 Workaround aktiv \u2014 wird entfernt sobald alle Eintr\u00e4ge Anfangszeiten haben.</div>':'';
+    var timeWarn=c.timeMatch===false?'<div class="both-notice" style="border-left-color:#a32d2d;background:#fcebeb;color:#a32d2d;margin:0 14px 10px">\u26a0 Startzeiten weichen ab: Sheet '+(c.shVon||'\u2014')+' vs. Eversports '+c.evStart+' \u2014 bitte pr\u00fcfen ob es derselbe Kurs ist.</div>':(c.timeMatch===null?'<div class="both-notice" style="margin:0 14px 10px">\u26a0 Keine Startzeit im Sheet \u2014 Zuordnung anhand Datum und Kurstyp.</div>':'');
     return '<div class="cf-card '+cc+'">'
       +'<div class="cf-hdr"><div class="cf-meta"><strong>'+fd(c.datum)+'</strong> \u00b7 '+c.evStart+'\u2013'+c.evEnd+' \u00b7 '+fmt(c.shHrs)+' Std.</div>'+sl+'</div>'
+      +timeWarn
       +'<div class="cf-body">'
       +'<div class="cf-side">'
       +'<div class="side-lbl sh">Trainer-App</div>'
